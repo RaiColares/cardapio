@@ -1,0 +1,11 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Ambiente local (nunca versionar secrets)
+.env
+
+# macOS
+.DS_Store

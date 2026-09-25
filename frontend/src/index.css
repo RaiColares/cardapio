@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+/* ============================================================
+   DESIGN TOKENS — Identidade "Premium + Tropical + Moderno + Clean"
+   ------------------------------------------------------------
+   Padrão: @theme inline mapeia utilidades Tailwind para variáveis
+   CSS de runtime (--c-*). Assim, cada estabelecimento poderá
+   personalizar cor primária/banner apenas sobrescrevendo as
+   variáveis (pronto também para dark mode via [data-theme]).
+   ============================================================ */
+
+:root {
+  /* Verde tropical — cor primária (natureza, gastronomia) */
+  --c-primary-50: #f0f7f0;
+  --c-primary-100: #dcebdc;
+  --c-primary-200: #bcd8bd;
+  --c-primary-300: #90bd93;
+  --c-primary-400: #629d67;
+  --c-primary-500: #42804a;
+  --c-primary-600: #33683b;
+  --c-primary-700: #2a5331;
+  --c-primary-800: #24432b;
+  --c-primary-900: #1e3825;
+  --c-primary-950: #101f15;
+
+  /* Areia — base quente (hospitalidade, lazer) */
+  --c-sand-50: #faf9f6;
+  --c-sand-100: #f4f1ea;
+  --c-sand-200: #e8e2d6;
+  --c-sand-300: #d8cdb9;
+  --c-sand-400: #c5b496;
+  --c-sand-500: #b49e78;
+
+  /* Aqua — acentos de água/lazer (uso pontual) */
+  --c-aqua-50: #effcfc;
+  --c-aqua-100: #d7f6f7;
+  --c-aqua-200: #b0eaef;
+  --c-aqua-300: #7dd9e3;
+  --c-aqua-400: #3fbfcf;
+  --c-aqua-500: #23a3b5;
+  --c-aqua-600: #1f8397;
+  --c-aqua-700: #1e6a7c;
+  --c-aqua-800: #205765;
+  --c-aqua-900: #204955;
+  --c-aqua-950: #102f39;
+
+  /* Exemplo comentado de dark mode futuro:
+     [data-theme="dark"] { --c-sand-50: #171512; --c-sand-100: #1f1c17; ... } */
+}
+
+@theme inline {
+  /* Cores primárias (verde) */
+  --color-primary-50: var(--c-primary-50);
+  --color-primary-100: var(--c-primary-100);
+  --color-primary-200: var(--c-primary-200);
+  --color-primary-300: var(--c-primary-300);
+  --color-primary-400: var(--c-primary-400);
+  --color-primary-500: var(--c-primary-500);
+  --color-primary-600: var(--c-primary-600);
+  --color-primary-700: var(--c-primary-700);
+  --color-primary-800: var(--c-primary-800);
+  --color-primary-900: var(--c-primary-900);
+  --color-primary-950: var(--c-primary-950);
+
+  /* Areia */
+  --color-sand-50: var(--c-sand-50);
+  --color-sand-100: var(--c-sand-100);
+  --color-sand-200: var(--c-sand-200);
+  --color-sand-300: var(--c-sand-300);
+  --color-sand-400: var(--c-sand-400);
+  --color-sand-500: var(--c-sand-500);
+
+  /* Aqua */
+  --color-aqua-50: var(--c-aqua-50);
+  --color-aqua-100: var(--c-aqua-100);
+  --color-aqua-200: var(--c-aqua-200);
+  --color-aqua-300: var(--c-aqua-300);
+  --color-aqua-400: var(--c-aqua-400);
+  --color-aqua-500: var(--c-aqua-500);
+  --color-aqua-600: var(--c-aqua-600);
+  --color-aqua-700: var(--c-aqua-700);
+  --color-aqua-800: var(--c-aqua-800);
+  --color-aqua-900: var(--c-aqua-900);
+  --color-aqua-950: var(--c-aqua-950);
+
+  /* Tipografia */
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+
+  /* Sombras suaves e discretas */
+  --shadow-card: 0 1px 2px rgb(16 31 21 / 0.04), 0 8px 24px -12px rgb(16 31 21 / 0.18);
+  --shadow-pop: 0 12px 40px -12px rgb(16 31 21 / 0.28);
+}
+
+/* Base global */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-sand-50 font-sans text-stone-800 antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Foco visível padrão — acessibilidade por teclado */
+  :focus-visible {
+    outline: 2px solid var(--c-primary-600);
+    outline-offset: 2px;
+  }
+
+  h1, h2, h3 {
+    @apply font-display text-stone-900;
+  }
+
+  /* Touch targets mínimos em mobile */
+  button, [role="button"], a, input, select {
+    touch-action: manipulation;
+  }
+}
+
+/* Utilidade: ocultar barra de rolagem em navegações horizontais */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Animações discretas (abertura de modal, drawer, toasts) */
+@theme {
+  --animate-fade-in: fade-in 150ms ease-out;
+  --animate-scale-in: scale-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-up: slide-up 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-right: slide-in-right 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slide-in-right {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+}
+
+/* ------------------------------------------------------------
+   Impressão do QR Code (Admin Mesas)
+   Ao imprimir, apenas o conteúdo com id="print-qr" fica visível.
+   ------------------------------------------------------------ */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-qr,
+  #print-qr * {
+    visibility: visible;
+  }
+  #print-qr {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+  }
+}

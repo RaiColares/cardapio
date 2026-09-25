@@ -1,0 +1,9 @@
+# Fase 1 (build) — node_modules e dist do host pertencem a outra plataforma
+# e/ou outro build. O resultado correto sempre é reconstruído no container.
+node_modules
+dist
+
+# Ambiente local não entra na imagem (a URL da API vem via build-arg).
+.env
+.env.*
+*.log

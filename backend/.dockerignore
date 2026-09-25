@@ -1,0 +1,18 @@
+# Fase 1 (build) — dependências e binários voltados ao container
+# ---------------------------------------------------------------
+# node_modules e dist existentes no host são do mesmo projeto, mas podem
+# conter binários de outra plataforma (ex.: bcrypt compilado p/ glibc). Sempre
+# reconstruí-los dentro do node:22-alpine (musl) para um build reproduzível.
+node_modules
+dist
+
+# Segredos e ambiente local não podem entrar na imagem.
+.env
+.env.*
+*.log
+
+# Diretórios de assistentes de desenvolvimento (sem utilidade em produção).
+.agents
+.claude
+.cursor
+.devin

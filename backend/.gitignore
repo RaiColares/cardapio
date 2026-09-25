@@ -1,0 +1,8 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Ambiente local (nunca versionar secrets)
+.env
