@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Trash2, UtensilsCrossed } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -9,12 +9,14 @@ import { Alert } from '../../components/ui/Alert.js';
 import { Badge } from '../../components/ui/Badge.js';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
+import { CurrencyInput } from '../../components/ui/CurrencyInput.js';
 import { EmptyState } from '../../components/ui/EmptyState.js';
 import { Input } from '../../components/ui/Input.js';
 import { Loading } from '../../components/ui/Loading.js';
 import { Modal } from '../../components/ui/Modal.js';
 import { Select } from '../../components/ui/Select.js';
 import { Switch } from '../../components/ui/Switch.js';
+import { Tabs } from '../../components/ui/Tabs.js';
 import { useToast } from '../../components/ui/Toast.js';
 import { ApiError } from '../../services/api.js';
 import {
@@ -91,6 +93,9 @@ const productFormSchema = z
 
 type ProductFormValues = z.infer<typeof productFormSchema>;
 
+/** Valor sentinela da aba "Todas" (nenhuma categoria filtrada). */
+const ALL_CATEGORIES = 'all';
+
 function toPayload(values: ProductFormValues): ProductPayload {
   return {
     name: values.name,
@@ -123,10 +128,15 @@ function emptyForm(): ProductFormValues {
 
 /**
  * Gestão de produtos (ADMIN/MANAGER).
- * Listagem com switch de disponibilidade (PATCH /products/:id/availability,
+ *
+ * Listagem AGRUPADA POR CATEGORIA em abas (uma aba por categoria + aba
+ * "Todas"), com switch de disponibilidade (PATCH /products/:id/availability,
  * update otimista com rollback), modal de criação/edição com select de
  * categorias ativas e exclusão com confirmação. Após mutações, invalida
  * as queries para atualização instantânea.
+ *
+ * Os valores monetários usam CurrencyInput (máscara BRL): o garçom/admin
+ * digita "1250" e vê "1.250,00", sem ambiguidade de separador decimal.
  */
 export function AdminProductsPage() {
   const queryClient = useQueryClient();
@@ -135,6 +145,7 @@ export function AdminProductsPage() {
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<ApiProduct | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ApiProduct | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>(ALL_CATEGORIES);
 
   const productsQuery = useQuery({ queryKey: ['products'], queryFn: listProducts });
   const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
@@ -154,6 +165,10 @@ export function AdminProductsPage() {
   const featuredValue = watch('featured');
   const activeValue = watch('active');
   const availableValue = watch('available');
+  // Campos monetários: o CurrencyInput grava em reais como string
+  // ("12.50"), o mesmo formato esperado pelo schema acima.
+  const priceValue = watch('price');
+  const promotionalPriceValue = watch('promotionalPrice');
 
   useEffect(() => {
     if (modalMode === 'edit' && editing) {
@@ -245,6 +260,62 @@ export function AdminProductsPage() {
   const saving = saveMutation.isPending;
   const deleting = deleteMutation.isPending;
 
+  // Abas: uma por categoria que tenha produtos + "Todas" como visão geral.
+  // Quando há uma única categoria, a lista simples evita uma aba redundante.
+  const categoriesWithProducts = useMemo(() => {
+    const products = productsQuery.data ?? [];
+    const byId = new Map<string, { id: string; name: string; count: number }>();
+
+    for (const product of products) {
+      const current = byId.get(product.categoryId);
+      if (current) {
+        current.count += 1;
+      } else {
+        byId.set(product.categoryId, {
+          id: product.categoryId,
+          name: product.category.name,
+          count: 1,
+        });
+      }
+    }
+
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [productsQuery.data]);
+
+  const categoryTabs = useMemo(() => {
+    if (categoriesWithProducts.length < 2) {
+      return null;
+    }
+
+    return [
+      { value: ALL_CATEGORIES, label: 'Todas' },
+      ...categoriesWithProducts.map((category) => ({
+        value: category.id,
+        label: `${category.name} (${category.count})`,
+      })),
+    ];
+  }, [categoriesWithProducts]);
+
+  // Kategorias agrupadas preservando a ordem do backend (displayOrder).
+  const productsByCategory = useMemo(() => {
+    const products = productsQuery.data ?? [];
+
+    return (categoriesQuery.data ?? [])
+      .map((category: ApiCategory) => ({
+        category,
+        products: products.filter((product) => product.categoryId === category.id),
+      }))
+      .filter((group) => group.products.length > 0);
+  }, [productsQuery.data, categoriesQuery.data]);
+
+  const visibleGroups = useMemo(
+    () =>
+      activeCategory === ALL_CATEGORIES
+        ? productsByCategory
+        : productsByCategory.filter((group) => group.category.id === activeCategory),
+    [productsByCategory, activeCategory],
+  );
+
   // Opções: categorias ativas + categoria atual (mesmo inativa) ao editar.
   const categoryOptions = (() => {
     const active = (categoriesQuery.data ?? []).filter((category) => category.active);
@@ -314,74 +385,68 @@ export function AdminProductsPage() {
       )}
 
       {productsQuery.isSuccess && productsQuery.data.length > 0 && (
-        <div className="flex flex-col gap-3">
-          {productsQuery.data.map((product) => (
-            <Card key={product.id} className="flex items-center gap-4">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sand-100 text-stone-500">
-                <UtensilsCrossed className="size-5" aria-hidden="true" />
-              </div>
+        <div className="flex flex-col gap-4">
+          {categoryTabs && (
+            <Tabs
+              items={categoryTabs}
+              value={activeCategory}
+              onChange={setActiveCategory}
+              ariaLabel="Filtrar produtos por categoria"
+              scrollable
+            />
+          )}
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="truncate font-semibold text-stone-900">{product.name}</h2>
-                  {product.featured && <Badge variant="primary">Destaque</Badge>}
-                  {!product.active && <Badge variant="neutral">Inativo</Badge>}
-                  {!product.available && <Badge variant="danger">Esgotado</Badge>}
-                </div>
-                <p className="mt-0.5 text-sm text-stone-500">
-                  {product.category.name} · {formatBRL(product.price)}
-                  {product.promotionalPrice !== null &&
-                    ` → promo ${formatBRL(product.promotionalPrice)}`}
-                  {product.variants.length > 0 && ` · ${product.variants.length} variações`}
-                </p>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="flex flex-col items-end gap-0.5">
-                  <Switch
-                    checked={product.available}
-                    disabled={availabilityMutation.isPending || deleting}
-                    onChange={(checked) =>
-                      availabilityMutation.mutate({ id: product.id, available: checked })
-                    }
-                    aria-label={
-                      product.available
-                        ? `Marcar ${product.name} como esgotado`
-                        : `Marcar ${product.name} como disponível`
-                    }
-                  />
-                  <span className="text-[11px] text-stone-400">
-                    {product.available ? 'Disponível' : 'Esgotado'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Editar ${product.name}`}
-                    disabled={deleting}
-                    onClick={() => {
-                      setEditing(product);
-                      setModalMode('edit');
-                    }}
-                  >
-                    <Pencil className="size-4" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Excluir ${product.name}`}
-                    disabled={deleting}
-                    onClick={() => setDeleteTarget(product)}
-                    className="text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              </div>
+          {visibleGroups.length === 0 ? (
+            <Card padded={false}>
+              <EmptyState
+                icon={UtensilsCrossed}
+                title="Nenhum produto nesta categoria"
+                description="Selecione outra aba ou cadastre um item."
+              />
             </Card>
-          ))}
+          ) : (
+            visibleGroups.map((group) => (
+              <section
+                key={group.category.id}
+                aria-labelledby={`products-category-${group.category.id}`}
+                className="flex flex-col gap-2.5"
+              >
+                {/* Nome da categoria só quando há mais de uma aba visível. */}
+                {categoryTabs && (
+                  <h2
+                    id={`products-category-${group.category.id}`}
+                    className="flex items-baseline gap-2 font-display text-base font-bold text-stone-900"
+                  >
+                    {group.category.name}
+                    <span className="text-xs font-normal text-stone-400">
+                      {group.products.length}{' '}
+                      {group.products.length === 1 ? 'produto' : 'produtos'}
+                    </span>
+                  </h2>
+                )}
+
+                <div className="flex flex-col gap-3">
+                  {group.products.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      showCategory={!categoryTabs}
+                      availabilityPending={availabilityMutation.isPending}
+                      deleting={deleting}
+                      onToggleAvailable={(available) =>
+                        availabilityMutation.mutate({ id: product.id, available })
+                      }
+                      onEdit={() => {
+                        setEditing(product);
+                        setModalMode('edit');
+                      }}
+                      onDelete={() => setDeleteTarget(product)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
         </div>
       )}
 
@@ -437,33 +502,29 @@ export function AdminProductsPage() {
                 disabled={saving}
                 {...register('categoryId')}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <CurrencyInput
                   id="product-price"
-                  label="Preço (R$)"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  placeholder="0,00"
+                  label="Preço"
+                  value={priceValue}
+                  onValueChange={(value) => setValue('price', value, { shouldValidate: true })}
                   error={errors.price?.message}
                   disabled={saving}
-                  {...register('price')}
                 />
-                <Input
+                <CurrencyInput
                   id="product-promo"
-                  label="Preço promocional (R$)"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  placeholder="Opcional"
+                  label="Preço promocional"
+                  hint="Opcional — deixe em branco se não houver promoção."
+                  placeholder="0,00"
+                  value={promotionalPriceValue ?? ''}
+                  onValueChange={(value) =>
+                    setValue('promotionalPrice', value, { shouldValidate: true })
+                  }
                   error={errors.promotionalPrice?.message}
                   disabled={saving}
-                  {...register('promotionalPrice')}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Input
                   id="product-time"
                   label="Tempo de preparo (min)"
@@ -569,5 +630,90 @@ export function AdminProductsPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+interface ProductCardProps {
+  product: ApiProduct;
+  /** Exibe a categoria na linha (relevante na visão "Todas", sem abas). */
+  showCategory: boolean;
+  availabilityPending: boolean;
+  deleting: boolean;
+  onToggleAvailable: (available: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+/** Linha do produto: identificação, preço e ações de disponibilidade. */
+function ProductCard({
+  product,
+  showCategory,
+  availabilityPending,
+  deleting,
+  onToggleAvailable,
+  onEdit,
+  onDelete,
+}: ProductCardProps) {
+  return (
+    <Card className="flex items-center gap-4">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sand-100 text-stone-500">
+        <UtensilsCrossed className="size-5" aria-hidden="true" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="truncate font-semibold text-stone-900">{product.name}</h3>
+          {product.featured && <Badge variant="primary">Destaque</Badge>}
+          {!product.active && <Badge variant="neutral">Inativo</Badge>}
+          {!product.available && <Badge variant="danger">Esgotado</Badge>}
+        </div>
+        <p className="mt-0.5 text-sm text-stone-500">
+          {showCategory && `${product.category.name} · `}
+          {formatBRL(product.price)}
+          {product.promotionalPrice !== null && ` → promo ${formatBRL(product.promotionalPrice)}`}
+          {product.variants.length > 0 && ` · ${product.variants.length} variações`}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-col items-end gap-0.5">
+          <Switch
+            checked={product.available}
+            disabled={availabilityPending || deleting}
+            onChange={onToggleAvailable}
+            aria-label={
+              product.available
+                ? `Marcar ${product.name} como esgotado`
+                : `Marcar ${product.name} como disponível`
+            }
+          />
+          <span className="text-[11px] text-stone-400">
+            {product.available ? 'Disponível' : 'Esgotado'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Editar ${product.name}`}
+            disabled={deleting}
+            onClick={onEdit}
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Excluir ${product.name}`}
+            disabled={deleting}
+            onClick={onDelete}
+            className="text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }

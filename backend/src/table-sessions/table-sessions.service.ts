@@ -34,6 +34,9 @@ const sessionWithContextSelect = {
   status: true,
   openedAt: true,
   closedAt: true,
+  // FASE 22 — intenção de pagamento e troco informados no request-bill.
+  paymentMethodIntent: true,
+  changeRequested: true,
   createdAt: true,
   updatedAt: true,
   table: {
@@ -94,6 +97,12 @@ function serializeSession(session: SessionWithContext) {
     status: session.status,
     openedAt: session.openedAt,
     closedAt: session.closedAt,
+    // FASE 22 — intenção de pagamento/troco persistidos na comanda.
+    // `changeRequested` é Decimal no banco → number no JSON (null quando
+    // o cliente não pediu troco).
+    paymentMethodIntent: session.paymentMethodIntent ?? null,
+    changeRequested:
+      session.changeRequested != null ? Number(session.changeRequested) : null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     table: { ...session.table, number: session.table.number },
@@ -336,6 +345,11 @@ export async function requestBill(sessionToken: string, input: RequestBillInput 
  * GET /table-sessions/:id/bill
  *
  * Resumo financeiro da comanda para fechamento (cálculo no servidor).
+ *
+ * FASE 22: além do resumo, expõe em `session` a intenção de pagamento e o
+ * troco solicitados pelo cliente no request-bill (`paymentMethodIntent` /
+ * `changeRequested`, ambos nullable) — o garçom precisa dessa informação
+ * no bill porque o evento realtime pode ter sido perdido.
  */
 export async function getSessionBill(id: string, establishmentId: string) {
   const session = await findSessionById(id, establishmentId);

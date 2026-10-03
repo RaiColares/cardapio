@@ -22,6 +22,30 @@ JWT: `Authorization: Bearer <token>` | expiração 8h.
 
 Erros: `INVALID_CREDENTIALS`, `USER_INACTIVE`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_TOKEN`.
 
+### RBAC — papéis elevados (FASE 23)
+
+`ADMIN` e `MANAGER` são papéis **SUPERVISORES**: nunca ficam bloqueados
+por uma allowlist de rota **operacional** (incluindo as rotas exclusivas
+dos painéis `/waiter` e `/kitchen`). A regra é aplicada de forma
+centralizada no middleware `authorize` (`ELEVATED_ROLES`), e não repetida
+rota a rota — assim nenhuma rota operacional nova nasce com o MANAGER
+por engano de fora da lista. Espelha o frontend, onde `/admin/*`,
+`/waiter` e `/kitchen` aceitam ADMIN e MANAGER.
+
+| Papel | Acesso |
+|-------|--------|
+| `ADMIN` | Total (inclusive gestão de equipe e settings) |
+| `MANAGER` | Total nas rotas operacionais; **sem** gestão de equipe |
+| `WAITER` | Operação: mesas (leitura), pedidos, comandas, pagamentos |
+| `KITCHEN` | Operação: fila de pedidos e transições de preparo |
+
+**Exceção explícita:** a gestão de equipe (`/users` CRUD) NÃO é rota
+operacional e permanece **ADMIN-only** — o MANAGER não administra
+credenciais de outros gestores. A exceção usa `authorizeAdminOnly()`,
+que ignora o bypass dos papéis elevados, deixando a decisão explícita e
+auditável no código.
+
+
 ## Estabelecimentos (SaaS — FASE 18)
 
 ### POST `/establishments/register` — onboarding público (sem JWT)
@@ -77,6 +101,12 @@ acessível a qualquer role autenticada.
 | PUT/PATCH | `/users/:id` | Atualiza membro (ADMIN) — `name?`, `email?`, `password?`, `role?`, `phone?`, `active?` |
 | DELETE | `/users/:id` | Remove membro (ADMIN) |
 
+> Estas rotas usam `authorizeAdminOnly()` — **exceção explícita** ao acesso
+> irrestrito de ADMIN/MANAGER (ver "RBAC — papéis elevados"). O MANAGER
+> recebe `403 FORBIDDEN` aqui por decisão de segurança: gerir credenciais
+> da equipe não é operação.
+
+
 Regras:
 
 - `role` permitida na criação/edição: `MANAGER`, `WAITER`, `KITCHEN` —
@@ -114,6 +144,23 @@ Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `FORBIDDEN`.
 | PATCH | `/tables/:id` | Atualizar mesa |
 | DELETE | `/tables/:id` | Excluir mesa (400 se houver sessões/pedidos) |
 | PATCH | `/tables/:id/status` | Alterar status da mesa |
+
+### Permissões (FASE 23 — leitura × escrita)
+
+| Rotas | WAITER | KITCHEN | MANAGER | ADMIN |
+|-------|--------|---------|---------|-------|
+| `GET /tables`, `GET /tables/:id` | ✅ | ❌ | ✅ | ✅ |
+| `POST /tables`, `PUT/PATCH /tables/:id`, `DELETE /tables/:id` | ❌ | ❌ | ✅ | ✅ |
+
+- **Leitura liberada para a operação**: o salão do garçom (`/waiter`)
+  lista as mesas para tocar comandas, abrir a conta e acompanhar o
+  Delivery. Antes desta fase o WAITER recebia `403 FORBIDDEN`
+  ("Permissão insuficiente") ao abrir o painel.
+- **Escrita continua exclusiva de ADMIN/MANAGER**: o WAITER apenas
+  enxerga as mesas — não cria, edita nem remove (a allowlist de escrita
+  não inclui WAITER/KITCHEN).
+- `GET /tables` aceita `?areaId=`; `establishmentId` sempre do JWT, então
+  um garçom de A jamais vê as mesas de B.
 
 `number` (String), `capacity` (1–100), `areaId` obrigatória.
 
@@ -262,9 +309,21 @@ Resumo da comanda para fechamento (calculado NO SERVIDOR):
 - `serviceFee` = subtotal × (serviceFeeRate ÷ 100) se habilitado;
 - `total` = subtotal − discount + serviceFee.
 
+**Intenção de pagamento (FASE 22)**: `session` também inclui
+`paymentMethodIntent` (`CASH`|`CARD`|`PIX`, nullable) e `changeRequested`
+(número, nullable), lidos da própria `TableSession` (persistidos no
+`request-bill`). Permite ao garçom exibir a intenção mesmo quando o evento
+realtime `BILL_REQUESTED` foi perdido (fallback do painel).
+`changeRequested` é `Decimal` no banco e é serializado como `number`.
+
 ```json
 {
-  "session": { "...", "table": { "number", "status" } },
+  "session": {
+    "id", "sessionToken", "status", "openedAt", "closedAt",
+    "paymentMethodIntent": "CASH",
+    "changeRequested": 100,
+    "table": { "number", "status" }
+  },
   "establishment": { "id", "name", "serviceFeeEnabled", "serviceFeeRate" },
   "summary": { "ordersCount", "itemsCount", "subtotal", "discount", "serviceFee", "serviceFeeRate", "total" },
   "orders": [{ "id", "orderNumber", "status", "subtotal", "discount", "serviceFee", "total", "items": [...] }],

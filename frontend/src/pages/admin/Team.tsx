@@ -398,7 +398,11 @@ export function AdminTeamPage() {
             type="password"
             autoComplete="new-password"
             placeholder={modalMode === 'edit' ? 'Deixe vazio para manter a atual' : 'Mínimo de 8 caracteres'}
-            hint={modalMode === 'edit' ? 'Preencha apenas se quiser trocar a senha.' : undefined}
+            hint={
+              modalMode === 'edit'
+                ? 'Preencha apenas se quiser trocar a senha.'
+                : 'A palavra-passe padrão será admin12345'
+            }
             error={errors.password?.message}
             disabled={saving}
             {...register('password')}

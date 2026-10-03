@@ -171,7 +171,10 @@ export function MenuPage() {
             <Store className="size-6" />
           </div>
           <div className="min-w-0">
-            <h1 className="font-display text-2xl font-bold leading-tight">
+            {/* text-white explícito: o base global aplica text-stone-900 em
+                h1/h2/h3 (index.css @layer base), que vence a cor herdada do
+                header — sem esta classe o nome ficaria escuro sobre o verde. */}
+            <h1 className="font-display text-2xl font-bold leading-tight text-white">
               {establishment.name}
             </h1>
             {establishment.description && (

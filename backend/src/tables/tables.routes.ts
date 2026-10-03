@@ -11,17 +11,30 @@ import {
 } from './tables.controller.js';
 
 /**
- * Rotas administrativas de Mesas.
+ * Rotas de Mesas.
  *
- * Acesso restrito a ADMIN e MANAGER.
- * O establishmentId é injetado a partir do JWT em todos os handlers.
+ * FASE 23 — Leitura separada de escrita:
+ * - LEITURA (GET /, GET /:id): liberada para a OPERAÇÃO. O salão do
+ *   garçom (`/waiter`) precisa listar as mesas para tocar comandas,
+ *   acompanhar o Delivery e abrir a conta — antes disso o WAITER recebia
+ *   403 FORBIDDEN "Permissão insuficiente" ao abrir o painel.
+ *   ADMIN/MANAGER acessam automaticamente (papéis elevados).
+ * - ESCRITA (POST/PUT/DELETE): continua EXCLUSIVA de ADMIN/MANAGER.
+ *   O WAITER apenas enxerga as mesas; não cria, edita nem remove —
+ *   a allowlist de escrita não inclui WAITER/KITCHEN.
+ *
+ * O `establishmentId` é injetado a partir do JWT em todos os handlers:
+ * um garçom de A jamais vê as mesas de B (multi-tenancy).
  */
 export const tablesRouter = Router();
 
-tablesRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+tablesRouter.use(authenticate);
 
-tablesRouter.get('/', listTablesController);
-tablesRouter.get('/:id', getTableController);
-tablesRouter.post('/', createTableController);
-tablesRouter.put('/:id', updateTableController);
-tablesRouter.delete('/:id', deleteTableController);
+// ---- Leitura (operação + gestão) ----
+tablesRouter.get('/', authorize('WAITER', 'MANAGER', 'ADMIN'), listTablesController);
+tablesRouter.get('/:id', authorize('WAITER', 'MANAGER', 'ADMIN'), getTableController);
+
+// ---- Escrita (gestão) ----
+tablesRouter.post('/', authorize('MANAGER', 'ADMIN'), createTableController);
+tablesRouter.put('/:id', authorize('MANAGER', 'ADMIN'), updateTableController);
+tablesRouter.delete('/:id', authorize('MANAGER', 'ADMIN'), deleteTableController);

@@ -124,6 +124,10 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
   const bill = billQuery.data;
   const summary = bill?.summary;
 
+  // Total da comanda (null enquanto o bill carrega): necessário para calcular
+  // o troco. Sem ele, o troco apareceria como o valor total pago pelo cliente.
+  const billTotal = summary ? summary.total : null;
+
   // Intenção de pagamento do cliente (FASE 22):
   // 1) fonte preferida — evento realtime BILL_REQUESTED (payload completo);
   // 2) fallback — campos expostos na própria comanda (contrato futuro do bill).
@@ -174,7 +178,7 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
       }
     >
       <>
-        {intent && <BillIntentAlert intent={intent} />}
+        {intent && <BillIntentAlert intent={intent} total={billTotal} />}
 
         {!sessionId ? null : billQuery.isPending ? (
           <Loading label="Carregando a conta..." />
@@ -363,23 +367,57 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
   );
 }
 
-/** Alerta visual com a intenção de pagamento informada pelo cliente. */
-function BillIntentAlert({ intent }: { intent: BillRequestIntent }) {
-  const label = intent.paymentMethodIntent
-    ? methodLabel[intent.paymentMethodIntent]
-    : 'não informado';
+/**
+ * Intenção de pagamento informada pelo cliente ao pedir a conta.
+ *
+ * O `changeRequested` é o valor que o cliente entregó/vai entregar
+ * ("Precisa de troco para quanto?"), então o troco a devolver é
+ * `changeRequested − total da comanda`. A conta é feita aqui apenas para
+ * EXIBIÇÃO ao garçom — o fechamento e a conciliação continuam no backend
+ * (que recalcula tudo e bloqueia o fechamento se o pagamento for
+ * insuficiente).
+ */
+function BillIntentAlert({
+  intent,
+  total,
+}: {
+  intent: BillRequestIntent;
+  /** Total do bill; null enquanto a conta carrega. */
+  total: number | null;
+}) {
+  const label = intent.paymentMethodIntent ? methodLabel[intent.paymentMethodIntent] : 'não informado';
 
-  const text =
-    intent.paymentMethodIntent === 'CASH' && intent.changeRequested != null
-      ? `Pagamento: ${label} — Troco para ${formatBRL(intent.changeRequested)}`
-      : `Pagamento: ${label}`;
+  // Troco em centavos (inteiros) para evitar ruído de ponto flutuante.
+  const changeCents =
+    intent.changeRequested != null && total != null
+      ? Math.round(intent.changeRequested * 100) - Math.round(total * 100)
+      : null;
 
   return (
     <Alert variant="warning" title="Intenção de pagamento do cliente" className="mb-4">
-      <span className="font-semibold">{text}</span>
-      <span className="block text-xs opacity-80">
-        Confirmar com o cliente antes do fechamento.
-      </span>
+      <p className="font-semibold">
+        O cliente informou: {label}
+        {intent.changeRequested != null && ` — Pagou com ${formatBRL(intent.changeRequested)}`}
+      </p>
+
+      {changeCents != null && changeCents > 0 && (
+        <p className="mt-2 rounded-lg bg-white px-3 py-2 text-base font-bold text-primary-800">
+          Troco a devolver: {formatBRL(changeCents / 100)}
+        </p>
+      )}
+
+      {changeCents != null && changeCents <= 0 && (
+        <p className="mt-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-red-700">
+          O valor informado é insuficiente para a conta. Faltam{' '}
+          {formatBRL(Math.abs(changeCents) / 100)}.
+        </p>
+      )}
+
+      {intent.changeRequested != null && total == null && (
+        <p className="mt-2 text-xs opacity-80">Calculando o troco…</p>
+      )}
+
+      <p className="mt-2 text-xs opacity-80">Confirme com o cliente antes do fechamento.</p>
     </Alert>
   );
 }

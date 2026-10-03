@@ -16,6 +16,7 @@ import {
 
 import { Avatar } from '../components/ui/Avatar.js';
 import { Drawer } from '../components/ui/Drawer.js';
+import { LogoutButton } from '../components/ui/LogoutButton.js';
 import { useAuthStore } from '../stores/authStore.js';
 import type { Role } from '../types/domain.js';
 import { cn } from '../utils/cn.js';
@@ -42,44 +43,75 @@ const navItems: NavItem[] = [
   { to: '/admin/settings', label: 'Configurações', icon: Settings, end: false, roles: ['ADMIN', 'MANAGER'] },
 ];
 
+/** Rótulo legível do papel (exibido no rodapé do menu). */
+const roleLabels: Record<Role, string> = {
+  ADMIN: 'Administrador',
+  MANAGER: 'Gerente',
+  WAITER: 'Garçom',
+  KITCHEN: 'Cozinha',
+};
+
 /**
  * Painel administrativo: sidebar em desktop (>lg), drawer no mobile.
  * Os itens do menu são filtrados pela role do usuário logado — o mesmo
  * critério de autorização do backend (ADMIN gerencia tudo; MANAGER não
  * vê "Equipe", que continua acessível apenas ao ADMIN).
+ *
+ * O rodapé do menu identifica o usuário logado e concentra a ação "Sair".
+ * O mesmo bloco é reutilizado na sidebar de desktop e no drawer mobile,
+ * garantindo que a saída esteja disponível nos dois tamanhos de tela.
  */
 export function AdminLayout() {
   const role = useAuthStore((s) => s.role);
+  const user = useAuthStore((s) => s.user);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const visibleItems = navItems.filter((item) => (role ? item.roles.includes(role) : false));
 
   const nav = (
-    <nav className="flex flex-col gap-1" aria-label="Navegação administrativa">
-      {visibleItems.map((item) => {
-        const Icon = item.icon;
+    <div className="flex min-h-full flex-col gap-4">
+      <nav className="flex flex-col gap-1" aria-label="Navegação administrativa">
+        {visibleItems.map((item) => {
+          const Icon = item.icon;
 
-        return (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            onClick={() => setMobileNavOpen(false)}
-            className={({ isActive }) =>
-              cn(
-                'flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors',
-                isActive
-                  ? 'bg-primary-700 text-white'
-                  : 'text-stone-600 hover:bg-sand-100 hover:text-stone-900',
-              )
-            }
-          >
-            <Icon className="size-5 shrink-0" aria-hidden="true" />
-            {item.label}
-          </NavLink>
-        );
-      })}
-    </nav>
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={() => setMobileNavOpen(false)}
+              className={({ isActive }) =>
+                cn(
+                  'flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors',
+                  isActive
+                    ? 'bg-primary-700 text-white'
+                    : 'text-stone-600 hover:bg-sand-100 hover:text-stone-900',
+                )
+              }
+            >
+              <Icon className="size-5 shrink-0" aria-hidden="true" />
+              {item.label}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      {/* Rodapé: usuário logado + sair */}
+      <div className="mt-auto border-t border-stone-200 pt-3">
+        {user && (
+          <div className="mb-2 flex items-center gap-3 px-3 py-2">
+            <Avatar name={user.name} size="sm" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-stone-900">{user.name}</p>
+              {role && (
+                <p className="truncate text-xs text-stone-500">{roleLabels[role]}</p>
+              )}
+            </div>
+          </div>
+        )}
+        <LogoutButton onLogout={() => setMobileNavOpen(false)} />
+      </div>
+    </div>
   );
 
   return (

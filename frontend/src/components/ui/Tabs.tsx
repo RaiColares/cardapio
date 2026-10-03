@@ -15,13 +15,20 @@ export interface TabsProps {
   onChange: (value: string) => void;
   ariaLabel: string;
   className?: string;
+  /**
+   * Quando true, as abas mantêm a largura do conteúdo e a lista passa a rolar
+   * horizontalmente em vez de comprimir os rótulos. Útil quando há muitas abas
+   * (ex.: uma por categoria). O padrão (false) mantém as abas dividindo a
+   * largura igualmente.
+   */
+  scrollable?: boolean;
 }
 
 /**
  * Abas acessíveis com navegação por teclado (setas ←/→).
  * O conteúdo do painel é renderizado pelo chamador.
  */
-export function Tabs({ items, value, onChange, ariaLabel, className }: TabsProps) {
+export function Tabs({ items, value, onChange, ariaLabel, className, scrollable = false }: TabsProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') {
       return;
@@ -41,7 +48,11 @@ export function Tabs({ items, value, onChange, ariaLabel, className }: TabsProps
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={cn('flex gap-1 rounded-xl bg-sand-100 p-1', className)}
+      className={cn(
+        'flex gap-1 rounded-xl bg-sand-100 p-1',
+        scrollable && 'overflow-x-auto',
+        className,
+      )}
     >
       {items.map((item, index) => {
         const selected = item.value === value;
@@ -56,7 +67,8 @@ export function Tabs({ items, value, onChange, ariaLabel, className }: TabsProps
             onClick={() => onChange(item.value)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
-              'flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors',
+              'flex h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors',
+              scrollable ? 'shrink-0 whitespace-nowrap' : 'flex-1',
               selected
                 ? 'bg-white text-primary-800 shadow-sm'
                 : 'text-stone-600 hover:text-stone-900',
