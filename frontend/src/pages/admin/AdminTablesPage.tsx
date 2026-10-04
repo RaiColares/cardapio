@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Printer, QrCode, Pencil, Plus, Trash2, UtensilsCrossed } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { QRCodeSVG } from 'qrcode.react';
 import { z } from 'zod';
@@ -24,9 +24,12 @@ import {
   deleteTable,
   listAreas,
   listTables,
+  setTableWaiters,
   updateTable,
 } from '../../services/physical.js';
 import type { TablePayload } from '../../services/physical.js';
+import { listTeamUsers } from '../../services/team.js';
+import { useAuthStore } from '../../stores/authStore.js';
 import type { ApiArea, ApiTable } from '../../types/domain.js';
 
 /**
@@ -79,14 +82,47 @@ function emptyForm(): TableFormValues {
 export function AdminTablesPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const role = useAuthStore((state) => state.role);
+  // A gestão da equipa (GET /users) é exclusiva do ADMIN; o MANAGER pode
+  // vincular garçons pela rota dedicada, mas não listar credenciais.
+  const isAdmin = role === 'ADMIN';
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<ApiTable | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ApiTable | null>(null);
   const [qrTarget, setQrTarget] = useState<ApiTable | null>(null);
+  const [selectedWaiters, setSelectedWaiters] = useState<string[]>([]);
 
   const tablesQuery = useQuery({ queryKey: ['tables'], queryFn: listTables });
   const areasQuery = useQuery({ queryKey: ['areas'], queryFn: listAreas });
+
+  // Lista completa de garçons (ADMIN). Habilitada só com o modal aberto.
+  const teamQuery = useQuery({
+    queryKey: ['team'],
+    queryFn: listTeamUsers,
+    enabled: isAdmin && modalMode !== null,
+  });
+
+  // Opções do seletor de garçons. Para MANAGER (sem acesso ao CRUD de
+  // equipa), limita-se aos garçons já vinculados a mesas.
+  const waiterOptions = useMemo(() => {
+    if (isAdmin) {
+      return (teamQuery.data ?? [])
+        .filter((member) => member.role === 'WAITER' && member.active)
+        .map((member) => ({ id: member.id, name: member.name }));
+    }
+
+    const map = new Map<string, { id: string; name: string }>();
+    for (const table of tablesQuery.data ?? []) {
+      for (const waiter of table.waiters ?? []) {
+        map.set(waiter.id, waiter);
+      }
+    }
+    for (const waiter of editing?.waiters ?? []) {
+      map.set(waiter.id, waiter);
+    }
+    return [...map.values()];
+  }, [isAdmin, teamQuery.data, tablesQuery.data, editing]);
 
   const {
     register,
@@ -111,10 +147,12 @@ export function AdminTablesPage() {
         areaId: editing.areaId,
         active: editing.active,
       });
+      setSelectedWaiters((editing.waiters ?? []).map((waiter) => waiter.id));
       return;
     }
     if (modalMode === 'create') {
       reset(emptyForm());
+      setSelectedWaiters([]);
     }
   }, [modalMode, editing, reset]);
 
@@ -130,11 +168,17 @@ export function AdminTablesPage() {
   })();
 
   const saveMutation = useMutation({
-    mutationFn: (values: TableFormValues) => {
+    mutationFn: async (values: TableFormValues) => {
       const payload = toPayload(values);
-      return modalMode === 'edit' && editing
-        ? updateTable(editing.id, payload)
-        : createTable(payload);
+      const saved =
+        modalMode === 'edit' && editing
+          ? await updateTable(editing.id, payload)
+          : await createTable(payload);
+
+      // O create/update de mesa não recebe vínculos de garçons; a
+      // sincronização é feita pela rota dedicada (FASE 23).
+      await setTableWaiters(saved.id, selectedWaiters);
+      return saved;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['tables'] });
@@ -239,6 +283,11 @@ export function AdminTablesPage() {
                 <p className="mt-0.5 text-sm text-stone-500">
                   {table.area.name} · {table.capacity}{' '}
                   {table.capacity === 1 ? 'pessoa' : 'pessoas'}
+                </p>
+                <p className="mt-0.5 text-xs text-stone-400">
+                  {(table.waiters ?? []).length > 0
+                    ? `Garçons: ${(table.waiters ?? []).map((waiter) => waiter.name).join(', ')}`
+                    : 'Sem garçom vinculado'}
                 </p>
               </div>
 
@@ -351,6 +400,50 @@ export function AdminTablesPage() {
                 disabled={saving}
                 {...register('areaId')}
               />
+
+              <fieldset className="rounded-xl border border-stone-200 px-4 py-3">
+                <legend className="px-1 text-sm font-semibold text-stone-700">
+                  Garçons responsáveis
+                </legend>
+                {isAdmin && teamQuery.isLoading ? (
+                  <p className="text-sm text-stone-400">Carregando garçons…</p>
+                ) : waiterOptions.length === 0 ? (
+                  <p className="text-sm text-stone-400">
+                    {isAdmin
+                      ? 'Nenhum garçom ativo cadastrado.'
+                      : 'Nenhum garçom vinculado a mesas ainda.'}
+                  </p>
+                ) : (
+                  <div className="mt-1 max-h-40 space-y-1.5 overflow-y-auto">
+                    {waiterOptions.map((waiter) => (
+                      <label
+                        key={waiter.id}
+                        className="flex items-center gap-2 text-sm text-stone-700"
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-4 rounded border-stone-300 text-primary-700 focus:ring-primary-600"
+                          checked={selectedWaiters.includes(waiter.id)}
+                          disabled={saving}
+                          onChange={(event) =>
+                            setSelectedWaiters((current) =>
+                              event.target.checked
+                                ? [...current, waiter.id]
+                                : current.filter((id) => id !== waiter.id),
+                            )
+                          }
+                        />
+                        {waiter.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-stone-400">
+                  {isAdmin
+                    ? 'Sem vínculo, a mesa fica visível a todos os garçons.'
+                    : 'Lista limitada aos garçons já vinculados a mesas (gestão de equipa é exclusiva do ADMIN).'}
+                </p>
+              </fieldset>
 
               <div className="flex items-center justify-between rounded-xl border border-stone-200 px-4 py-3">
                 <div>

@@ -178,7 +178,10 @@ export async function transitionPaymentStatusController(
   }
 }
 
-/** DELETE /api/v1/payments/:id — remove pagamento pendente */
+/**
+ * DELETE /api/v1/payments/:id — estorno de lançamento (MANAGER/ADMIN).
+ * Remove o pagamento e devolve o saldo recalculado da comanda.
+ */
 export async function deletePaymentController(
   req: Request,
   res: Response,
@@ -199,8 +202,8 @@ export async function deletePaymentController(
       );
     }
 
-    await deletePayment(params.data.id, req.user.establishmentId);
-    res.json({ success: true, data: { id: params.data.id } });
+    const result = await deletePayment(params.data.id, req.user.establishmentId);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

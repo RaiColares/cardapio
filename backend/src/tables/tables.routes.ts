@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { authenticate } from '../common/middlewares/authenticate.js';
 import { authorize } from '../common/middlewares/authorize.js';
 import {
+  assignTableWaitersController,
   createTableController,
   deleteTableController,
   getTableController,
@@ -38,3 +39,10 @@ tablesRouter.get('/:id', authorize('WAITER', 'MANAGER', 'ADMIN'), getTableContro
 tablesRouter.post('/', authorize('MANAGER', 'ADMIN'), createTableController);
 tablesRouter.put('/:id', authorize('MANAGER', 'ADMIN'), updateTableController);
 tablesRouter.delete('/:id', authorize('MANAGER', 'ADMIN'), deleteTableController);
+
+// FASE 23 — Vínculo de garçons (NxN). Somente gestão.
+tablesRouter.put(
+  '/:id/waiters',
+  authorize('MANAGER', 'ADMIN'),
+  assignTableWaitersController,
+);

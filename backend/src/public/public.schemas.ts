@@ -32,7 +32,6 @@ const quantitySchema = z
 
 const orderItemSchema = z.object({
   productId: z.string().uuid('ID do produto inválido.'),
-  variantId: z.string().uuid('ID da variação inválido.').optional().nullable(),
   modifierIds: z
     .array(z.string().uuid('ID de adicional inválido.'))
     .max(50, 'Limite de 50 adicionais por item.')
@@ -61,7 +60,7 @@ export const createPublicOrderSchema = z
       .optional()
       .nullable(),
   })
-  // Itens duplicados (mesmo produto+variante+modifiers+quantity) não são abuso,
+  // Itens duplicados (mesmo produto+modifiers+quantity) não são abuso,
   // mas mais de 30 itens já é rejeitado acima.
   .refine((data) => data.items.length >= 1, {
     message: 'O pedido deve conter ao menos 1 item.',

@@ -36,7 +36,7 @@ export async function listOrdersController(
     const orders = await listOperationalOrders(
       req.user.establishmentId,
       query.data,
-      req.user.role,
+      req.user,
     );
     res.json({ success: true, data: orders });
   } catch (error) {
@@ -68,6 +68,7 @@ export async function getOrderController(
     const order = await getOperationalOrderById(
       params.data.id,
       req.user.establishmentId,
+      req.user,
     );
     res.json({ success: true, data: order });
   } catch (error) {
@@ -115,8 +116,7 @@ export async function updateOrderStatusController(
     const order = await updateOrderStatus(
       params.data.id,
       body.data,
-      req.user.establishmentId,
-      req.user.role,
+      req.user,
     );
     res.json({ success: true, data: order });
   } catch (error) {

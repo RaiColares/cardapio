@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Schemas de validação do módulo de Produtos e Variações.
+ * Schemas de validação do módulo de Produtos.
  *
  * Validações financeiras: price e promotionalPrice aceitam SOMENTE
  * valores positivos (até 9.999.999,99, compatível com Decimal(10,2)).
@@ -124,31 +124,6 @@ export const availabilitySchema = z.object({
   available: z.boolean('O campo available deve ser true ou false.'),
 });
 
-/**
- * Schema de criação de variação (tamanho/preço, ex: P, M, G).
- */
-export const createVariantSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'O nome da variação é obrigatório.')
-    .max(30, 'O nome da variação deve ter no máximo 30 caracteres.'),
-  price: priceSchema,
-  displayOrder: z
-    .number()
-    .int()
-    .min(0, 'O displayOrder não pode ser negativo.')
-    .max(9999, 'O displayOrder deve ser no máximo 9999.')
-    .optional(),
-  active: z.boolean().optional(),
-});
-
-export const variantIdParamSchema = z.object({
-  id: z.string().uuid('ID do produto inválido.'),
-  variantId: z.string().uuid('ID da variação inválido.'),
-});
-
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
-export type CreateVariantInput = z.infer<typeof createVariantSchema>;

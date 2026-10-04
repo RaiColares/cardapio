@@ -138,6 +138,9 @@ model User {
 
   establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
   auditLogs     AuditLog[]
+  // FASE 23 — mesas vinculadas ao garçom (NxN). Define a visibilidade
+  // da mesa/sala no salão quando há garçons atribuídos.
+  tables        Table[]      @relation("TableWaiters")
 
   @@index([establishmentId])
   @@index([email])
@@ -185,6 +188,9 @@ model Table {
   area          Area          @relation(fields: [areaId], references: [id])
   tableSessions TableSession[]
   orders        Order[]
+  // FASE 23 — garçons vinculados à mesa (NxN). Quando não vazio, somente
+  // esses garçons (e MANAGER/ADMIN) enxergam a mesa e recebem os eventos.
+  waiters       User[]        @relation("TableWaiters")
 
   @@unique([establishmentId, number])
   @@index([establishmentId])
@@ -207,6 +213,10 @@ model TableSession {
   closedAt            DateTime?
   paymentMethodIntent String?            @map("payment_method_intent")
   changeRequested     Decimal?           @db.Decimal(10, 2) @map("change_requested")
+  // FASE 23 — ajustes manuais da comanda (aplicados no total a pagar).
+  discountAmount      Decimal            @default(0) @db.Decimal(10, 2) @map("discount_amount")
+  extraChargeAmount   Decimal            @default(0) @db.Decimal(10, 2) @map("extra_charge_amount")
+  extraChargeNote     String?            @map("extra_charge_note")
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -270,7 +280,6 @@ model Product {
 
   establishment  Establishment          @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
   category       Category               @relation(fields: [categoryId], references: [id])
-  variants       ProductVariant[]
   modifierGroups ProductModifierGroup[]
   orderItems     OrderItem[]
 
@@ -278,27 +287,6 @@ model Product {
   @@index([categoryId])
   @@index([available])
   @@map("products")
-}
-
-// ============================================================
-// ProductVariant
-// ============================================================
-
-model ProductVariant {
-  id           String   @id @default(uuid())
-  productId    String   @map("product_id")
-  name         String
-  price        Decimal  @db.Decimal(10, 2)
-  active       Boolean  @default(true)
-  displayOrder Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
-
-  @@index([productId])
-  @@map("product_variants")
 }
 
 // ============================================================
@@ -471,9 +459,11 @@ model OrderItem {
   id               String   @id @default(uuid())
   orderId          String   @map("order_id")
   productId        String   @map("product_id")
-  productVariantId String?  @map("product_variant_id")
   // Snapshots históricos — não podem ser alterados por mudanças futuras no cadastro
   productName      String   @map("product_name")
+  // Snapshot legado: o conceito de variações foi removido do domínio (Fase 23).
+  // Mantido para preservar o histórico de pedidos anteriores à remoção;
+  // novos pedidos gravam sempre NULL.
   variantName      String?  @map("variant_name")
   unitPrice        Decimal  @db.Decimal(10, 2) @map("unit_price")
   quantity         Int
@@ -484,7 +474,6 @@ model OrderItem {
 
   order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product             @relation(fields: [productId], references: [id])
-  variant   ProductVariant?     @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
   modifiers OrderItemModifier[]
 
   @@index([orderId])

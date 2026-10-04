@@ -4,6 +4,7 @@ import type { PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
+import { getSessionFinancials } from '../table-sessions/table-sessions.service.js';
 import type {
   CreatePaymentInput,
   UpdatePaymentInput,
@@ -370,27 +371,30 @@ export async function updatePayment(
 // ---------------------------------------------------------------
 
 /**
- * DELETE /payments/:id
+ * DELETE /payments/:id — ESTORNO de lançamento de pagamento.
  *
- * Só permite excluir pagamentos ainda PENDING (lançamento indevido).
- * Pagamentos processados ficam registrados para auditoria — usam
- * CANCELLED/REFUNDED/FAILED em vez de DELETE.
+ * Remove o registro de pagamento (inclusive já PAID) e devolve o resumo
+ * financeiro recalculado da comanda associada. A TableSession não guarda
+ * `totalPaid` desnormalizado: o saldo é sempre derivado dos pagamentos
+ * remanescentes, de modo que o DELETE já reflete o novo total pago.
+ *
+ * SEGURANÇA: a autorização (MANAGER/ADMIN) é aplicada na rota; o tenant
+ * é sempre validado via TableSession + JWT. A ação é auditada pelo
+ * middleware global (DELETE /payments/:id).
  */
 export async function deletePayment(paymentId: string, establishmentId: string) {
   const payment = await ensurePaymentInTenant(paymentId, establishmentId);
 
-  const current = await prisma.payment.findUnique({
-    where: { id: paymentId },
-    select: { status: true },
-  });
-
-  if (current && current.status !== 'PENDING') {
-    throw new AppError(
-      409,
-      'PAYMENT_NOT_PENDING',
-      'Apenas pagamentos pendentes podem ser excluídos. Use CANCELLED/REFUNDED/FAILED para os demais.',
-    );
-  }
-
   await prisma.payment.delete({ where: { id: paymentId } });
+
+  const financials = await getSessionFinancials(
+    payment.tableSessionId,
+    establishmentId,
+  );
+
+  return {
+    removedPaymentId: paymentId,
+    tableSessionId: payment.tableSessionId,
+    ...financials,
+  };
 }

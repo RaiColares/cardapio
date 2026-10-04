@@ -4,12 +4,12 @@ import { persist } from 'zustand/middleware';
 import type { OrderStatus, TableStatus } from '../types/domain.js';
 
 /**
- * Chave do item no carrinho: produto + variante + adicionais (ordem estável).
+ * Chave do item no carrinho: produto + adicionais (ordem estável).
  * Itens idênticos são agrupados (quantidade soma).
  */
-function buildItemKey(productId: string, variantId: string | null, modifierIds: string[]): string {
+function buildItemKey(productId: string, modifierIds: string[]): string {
   const mods = [...modifierIds].sort().join(',');
-  return `${productId}::${variantId ?? ''}::${mods}`;
+  return `${productId}::${mods}`;
 }
 
 export interface CartModifier {
@@ -22,11 +22,9 @@ export interface CartItem {
   key: string;
   productId: string;
   productName: string;
-  variantId: string | null;
-  variantName: string | null;
   modifiers: CartModifier[];
   quantity: number;
-  /** Preço unitário exibido (produto ou variante) SEM adicionais — apresentação. */
+  /** Preço unitário exibido do produto SEM adicionais — apresentação. */
   unitPrice: number;
 }
 
@@ -131,8 +129,8 @@ export const customerStore = create<CustomerState>()(
   ),
 );
 
-export function cartItemKey(productId: string, variantId: string | null, modifierIds: string[]): string {
-  return buildItemKey(productId, variantId, modifierIds);
+export function cartItemKey(productId: string, modifierIds: string[]): string {
+  return buildItemKey(productId, modifierIds);
 }
 
 /** Subtotal EXIBIDO (estimativa) — valores finais são recalculados pelo backend. */

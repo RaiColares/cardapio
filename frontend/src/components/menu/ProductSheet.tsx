@@ -29,7 +29,6 @@ function groupConstraints(group: ModifierGroup, selected: string[]) {
 }
 
 export function ProductSheet({ product, onClose, onAdd }: ProductSheetProps) {
-  const [variantId, setVariantId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [quantity, setQuantity] = useState(1);
 
@@ -38,10 +37,6 @@ export function ProductSheet({ product, onClose, onAdd }: ProductSheetProps) {
   }
 
   const activeProduct = product;
-
-  // Primeira variante pré-selecionada (útil quando a opção é obrigatória).
-  const effectiveVariantId = variantId ?? product.variants[0]?.id ?? null;
-  const selectedVariant = product.variants.find((variant) => variant.id === effectiveVariantId);
 
   function toggleModifier(group: ModifierGroup, modifier: Modifier) {
     const current = selected[group.id] ?? [];
@@ -72,7 +67,7 @@ export function ProductSheet({ product, onClose, onAdd }: ProductSheetProps) {
     }
   }
 
-  const basePrice = selectedVariant ? selectedVariant.price : product.promotionalPrice ?? product.price;
+  const basePrice = product.promotionalPrice ?? product.price;
   const unitPrice =
     basePrice + selectedModifiers.reduce((sum, modifier) => sum + modifier.price, 0);
   const lineTotal = unitPrice * quantity;
@@ -91,18 +86,15 @@ export function ProductSheet({ product, onClose, onAdd }: ProductSheetProps) {
 
     const modifierIds = selectedModifiers.map((modifier) => modifier.id);
     onAdd({
-      key: cartItemKey(activeProduct.id, effectiveVariantId, modifierIds),
+      key: cartItemKey(activeProduct.id, modifierIds),
       productId: activeProduct.id,
       productName: activeProduct.name,
-      variantId: effectiveVariantId,
-      variantName: selectedVariant?.name ?? null,
       modifiers: selectedModifiers,
       quantity,
       unitPrice: basePrice,
     });
     setSelected({});
     setQuantity(1);
-    setVariantId(null);
     onClose();
   }
 
@@ -115,41 +107,6 @@ export function ProductSheet({ product, onClose, onAdd }: ProductSheetProps) {
             {product.ingredients && product.allergens && ' · '}
             {product.allergens && <span>Alérgenos: {product.allergens}</span>}
           </p>
-        )}
-
-        {/* Variações — seleção única (obrigatória quando existem) */}
-        {product.variants.length > 0 && (
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold text-stone-900">
-              {product.variants.length > 1 ? 'Escolha uma opção' : 'Opção'}*
-            </legend>
-            <div className="space-y-2" role="radiogroup">
-              {product.variants.map((variant) => {
-                const checked = variant.id === effectiveVariantId;
-                return (
-                  <button
-                    key={variant.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => setVariantId(variant.id)}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors',
-                      checked
-                        ? 'border-primary-600 bg-primary-50 text-primary-900'
-                        : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300',
-                    )}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-medium">
-                      {checked && <Check className="size-4" aria-hidden="true" />}
-                      {variant.name}
-                    </span>
-                    <span className="text-sm font-semibold">{formatBRL(variant.price)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
         )}
 
         {/* Grupos de adicionais com min/max */}

@@ -45,5 +45,17 @@ export const tableIdParamSchema = z.object({
   id: z.string().uuid('ID da mesa inválido.'),
 });
 
+/**
+ * FASE 23 — PUT /tables/:id/waiters
+ *
+ * Lista de garçons a vincular à mesa. `[]` limpa o vínculo.
+ */
+export const setTableWaitersSchema = z.object({
+  userIds: z
+    .array(z.string().uuid('ID de usuário inválido.'))
+    .max(50, 'No máximo 50 garçons por mesa.'),
+});
+
 export type CreateTableInput = z.infer<typeof createTableSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
+export type SetTableWaitersInput = z.infer<typeof setTableWaitersSchema>;

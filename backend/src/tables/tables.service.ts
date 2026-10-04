@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
+import {
+  tableVisibilityWhere,
+  type AuthContext,
+} from '../common/visibility/table-visibility.js';
 import type { CreateTableInput, UpdateTableInput } from './tables.schemas.js';
 
 /**
@@ -29,27 +33,64 @@ const tableSelect = {
   updatedAt: true,
 } as const;
 
-/** Lista mesas do estabelecimento autenticado (opcional por área). */
-export async function listTables(establishmentId: string, areaId?: string) {
+/**
+ * FASE 23 — Garçons vinculados à mesa (NxN).
+ *
+ * Exposto nas respostas para que os painéis saibam a quem a mesa está
+ * atribuída. Nunca inclui passwordHash (select explícito).
+ */
+const waitersSelect = {
+  waiters: {
+    select: { id: true, name: true, email: true, role: true, active: true },
+    orderBy: { name: 'asc' },
+  },
+} as const;
+
+/**
+ * Lista mesas do estabelecimento autenticado (opcional por área).
+ *
+ * FASE 23: quando `viewer` é informado, aplica a visibilidade do salão
+ * (garçons só enxergam mesas sem vínculo ou vinculadas a eles).
+ */
+export async function listTables(
+  establishmentId: string,
+  areaId?: string,
+  viewer?: AuthContext,
+) {
   return prisma.table.findMany({
     where: {
       establishmentId,
       ...(areaId ? { areaId } : {}),
+      ...(viewer ? tableVisibilityWhere(viewer) : {}),
     },
     select: {
       ...tableSelect,
+      ...waitersSelect,
       area: { select: { id: true, name: true } },
     },
     orderBy: [{ number: 'asc' }],
   });
 }
 
-/** Busca uma mesa garantindo que pertence ao estabelecimento autenticado. */
-export async function getTableById(id: string, establishmentId: string) {
+/**
+ * Busca uma mesa garantindo que pertence ao estabelecimento autenticado.
+ * Quando `viewer` é informado, a visibilidade do salão também é aplicada
+ * (um garçom não enxerga mesa atribuída a outro garçom).
+ */
+export async function getTableById(
+  id: string,
+  establishmentId: string,
+  viewer?: AuthContext,
+) {
   const table = await prisma.table.findFirst({
-    where: { id, establishmentId },
+    where: {
+      id,
+      establishmentId,
+      ...(viewer ? tableVisibilityWhere(viewer) : {}),
+    },
     select: {
       ...tableSelect,
+      ...waitersSelect,
       area: { select: { id: true, name: true } },
     },
   });
@@ -110,6 +151,7 @@ export async function createTable(input: CreateTableInput, establishmentId: stri
     },
     select: {
       ...tableSelect,
+      ...waitersSelect,
       area: { select: { id: true, name: true } },
     },
   });
@@ -144,6 +186,7 @@ export async function updateTable(
     },
     select: {
       ...tableSelect,
+      ...waitersSelect,
       area: { select: { id: true, name: true } },
     },
   });
@@ -173,4 +216,55 @@ export async function deleteTable(id: string, establishmentId: string) {
   }
 
   await prisma.table.delete({ where: { id } });
+}
+
+/**
+ * FASE 23 — PUT /tables/:id/waiters
+ *
+ * Vincula (substitui) os garçons de uma mesa. Enviar `userIds: []`
+ * limpa o vínculo (mesa volta a ser visível a todos os painéis).
+ *
+ * Multi-tenancy: a mesa e TODOS os garçons devem pertencer ao mesmo
+ * estabelecimento do JWT; a role deve ser WAITER e o usuário ativo.
+ */
+export async function assignTableWaiters(
+  id: string,
+  userIds: string[],
+  establishmentId: string,
+) {
+  await getTableById(id, establishmentId);
+
+  const uniqueIds = [...new Set(userIds)];
+
+  if (uniqueIds.length > 0) {
+    const waiters = await prisma.user.findMany({
+      where: {
+        id: { in: uniqueIds },
+        establishmentId,
+        role: 'WAITER',
+        active: true,
+      },
+      select: { id: true },
+    });
+
+    if (waiters.length !== uniqueIds.length) {
+      throw new AppError(
+        400,
+        'INVALID_WAITER',
+        'Todos os usuários devem ser garçons (WAITER) ativos do mesmo estabelecimento.',
+      );
+    }
+  }
+
+  return prisma.table.update({
+    where: { id },
+    data: {
+      waiters: { set: uniqueIds.map((userId) => ({ id: userId })) },
+    },
+    select: {
+      ...tableSelect,
+      ...waitersSelect,
+      area: { select: { id: true, name: true } },
+    },
+  });
 }

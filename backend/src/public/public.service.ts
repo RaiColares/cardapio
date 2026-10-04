@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
-import { emitToEstablishment } from '../realtime/socket.js';
+import { emitToTableAudience } from '../realtime/socket.js';
 import type { CreatePublicOrderInput } from './public.schemas.js';
 
 /**
@@ -24,8 +24,8 @@ function normalizePrice(value: unknown): number | null {
 /**
  * GET /public/menu/:slug
  * Retorna estabelecimento (ativo) + categorias ativas + produtos
- * disponíveis (active=true AND available=true), com variantes e
- * grupos de adicionais para montagem do cardápio no cliente.
+ * disponíveis (active=true AND available=true), com grupos de
+ * adicionais para montagem do cardápio no cliente.
  */
 export async function getPublicMenu(slug: string) {
   const establishment = await prisma.establishment.findFirst({
@@ -76,11 +76,6 @@ export async function getPublicMenu(slug: string) {
           allergens: true,
           displayOrder: true,
           featured: true,
-          variants: {
-            where: { active: true },
-            orderBy: { displayOrder: 'asc' },
-            select: { id: true, name: true, price: true, displayOrder: true },
-          },
           modifierGroups: {
             orderBy: { displayOrder: 'asc' },
             select: {
@@ -130,10 +125,6 @@ export async function getPublicMenu(slug: string) {
         allergens: product.allergens,
         displayOrder: product.displayOrder,
         featured: product.featured,
-        variants: product.variants.map((variant) => ({
-          ...variant,
-          price: normalizePrice(variant.price),
-        })),
         modifierGroups: product.modifierGroups.map(({ modifierGroup }) => ({
           id: modifierGroup.id,
           name: modifierGroup.name,
@@ -235,7 +226,14 @@ async function resolveSession(tableSessionToken: string) {
   const session = await prisma.tableSession.findFirst({
     where: { sessionToken: tableSessionToken },
     include: {
-      table: { select: { id: true, number: true, establishmentId: true } },
+      table: {
+        select: {
+          id: true,
+          number: true,
+          establishmentId: true,
+          waiters: { select: { id: true } },
+        },
+      },
       establishment: { select: { id: true, status: true, serviceFeeEnabled: true, serviceFeeRate: true } },
     },
   });
@@ -256,8 +254,8 @@ async function resolveSession(tableSessionToken: string) {
 }
 
 /**
- * Busca os produtos com preços atuais, variantes e grupos de
- * adicionais, validando disponibilidade e tenant.
+ * Busca os produtos com preços atuais e grupos de adicionais,
+ * validando disponibilidade e tenant.
  */
 async function fetchProductsWithPrices(establishmentId: string, items: CartItem[]) {
   const productIds = [...new Set(items.map((item) => item.productId))];
@@ -275,9 +273,6 @@ async function fetchProductsWithPrices(establishmentId: string, items: CartItem[
       price: true,
       promotionalPrice: true,
       categoryId: true,
-      variants: {
-        select: { id: true, name: true, price: true, active: true },
-      },
       modifierGroups: {
         select: {
           modifierGroup: {
@@ -308,8 +303,6 @@ function buildCartItems(
   const cart: {
     productId: string;
     productName: string;
-    variantId: string | null;
-    variantName: string | null;
     quantity: number;
     unitPrice: number;
     totalPrice: number;
@@ -330,26 +323,9 @@ function buildCartItems(
     }
 
     // Base do preço: promoção vigente OU preço atual do produto no banco.
-    const basePrice = product.promotionalPrice !== null
+    const unitPrice = product.promotionalPrice !== null
       ? Number(product.promotionalPrice)
       : Number(product.price);
-
-    // Variação: preço da variação substitui o preço base.
-    let unitPrice = basePrice;
-    let variantId: string | null = null;
-    let variantName: string | null = null;
-
-    if (item.variantId) {
-      const variant = product.variants.find((v) => v.id === item.variantId);
-
-      if (!variant || !variant.active) {
-        throw new AppError(400, 'VARIANT_NOT_FOUND', 'Variação indisponível.');
-      }
-
-      unitPrice = Number(variant.price);
-      variantId = variant.id;
-      variantName = variant.name;
-    }
 
     // Adicionais: validar vínculo com grupos do produto + regras do grupo.
     const modifierIds = item.modifierIds ?? [];
@@ -428,8 +404,6 @@ function buildCartItems(
     cart.push({
       productId: product.id,
       productName: product.name,
-      variantId,
-      variantName,
       quantity: item.quantity,
       unitPrice: unitPriceWithModifiers,
       totalPrice: round2(totalPrice),
@@ -493,11 +467,9 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
         items: {
           create: cart.map((item) => ({
             productId: item.productId,
-            productVariantId: item.variantId,
             quantity: item.quantity,
             // Snapshots históricos inalteráveis:
             productName: item.productName,
-            variantName: item.variantName,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,
             notes: item.notes,
@@ -552,7 +524,13 @@ export async function createPublicOrder(input: CreatePublicOrderInput) {
     })),
   };
 
-  emitToEstablishment(establishmentId, 'NEW_ORDER', eventPayload);
+  // Realtime: respeita os garçons vinculados à mesa (FASE 23).
+  emitToTableAudience(
+    establishmentId,
+    session.table.waiters.map((waiter) => waiter.id),
+    'NEW_ORDER',
+    eventPayload,
+  );
 
   return {
     id: order.id,

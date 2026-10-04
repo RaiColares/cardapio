@@ -304,12 +304,8 @@ interface ProductRowProps {
 }
 
 function ProductRow({ product, quantityInCart, onSelect }: ProductRowProps) {
-  const hasVariants = product.variants.length > 0;
-  const displayPrice = hasVariants
-    ? Math.min(...product.variants.map((variant) => variant.price))
-    : product.promotionalPrice ?? product.price;
-  const originalPrice =
-    !hasVariants && product.promotionalPrice !== null ? product.price : null;
+  const displayPrice = product.promotionalPrice ?? product.price;
+  const originalPrice = product.promotionalPrice !== null ? product.price : null;
 
   return (
     <article
@@ -328,7 +324,7 @@ function ProductRow({ product, quantityInCart, onSelect }: ProductRowProps) {
         <div className="flex items-center gap-1.5">
           <h3 className="truncate font-semibold text-stone-900">{product.name}</h3>
           {product.featured && <Badge variant="primary">Destaque</Badge>}
-          {product.promotionalPrice !== null && !hasVariants && (
+          {product.promotionalPrice !== null && (
             <Badge variant="danger">Promoção</Badge>
           )}
         </div>
@@ -338,9 +334,6 @@ function ProductRow({ product, quantityInCart, onSelect }: ProductRowProps) {
         )}
 
         <div className="mt-1.5 flex items-baseline gap-1.5">
-          {hasVariants && (
-            <span className="text-xs text-stone-400">a partir de</span>
-          )}
           <span className="font-display text-base font-semibold text-primary-700">
             {formatBRL(displayPrice)}
           </span>

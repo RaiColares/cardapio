@@ -6,6 +6,7 @@ import {
   closeSessionController,
   getSessionBillController,
   getSessionReceiptController,
+  updateSessionAdjustmentsController,
 } from './table-sessions.controller.js';
 
 /**
@@ -20,4 +21,5 @@ tableSessionsRouter.use(authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'));
 
 tableSessionsRouter.get('/:id/bill', getSessionBillController);
 tableSessionsRouter.get('/:id/receipt', getSessionReceiptController);
+tableSessionsRouter.patch('/:id/adjustments', updateSessionAdjustmentsController);
 tableSessionsRouter.post('/:id/close', closeSessionController);

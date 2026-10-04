@@ -26,4 +26,7 @@ paymentsRouter.get('/table-sessions/:id/payments', authenticate, authorize('WAIT
 paymentsRouter.post('/table-sessions/:id/payments', authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'), createPaymentController);
 paymentsRouter.patch('/payments/:id', authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'), updatePaymentController);
 paymentsRouter.patch('/payments/:id/status', authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'), transitionPaymentStatusController);
-paymentsRouter.delete('/payments/:id', authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'), deletePaymentController);
+// FASE 23 — Estorno: remoção de lançamento (inclusive já PAID) é ação
+// sensível, restrita a MANAGER/ADMIN. Os demais fluxos continuam com
+// WAITER/MANAGER/ADMIN.
+paymentsRouter.delete('/payments/:id', authenticate, authorize('MANAGER', 'ADMIN'), deletePaymentController);

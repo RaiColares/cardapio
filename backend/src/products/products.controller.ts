@@ -4,20 +4,15 @@ import { AppError } from '../common/errors/AppError.js';
 import {
   availabilitySchema,
   createProductSchema,
-  createVariantSchema,
   listProductsQuerySchema,
   productIdParamSchema,
   updateProductSchema,
-  variantIdParamSchema,
 } from './products.schemas.js';
 import {
-  addVariant,
   createProduct,
   deleteProduct,
-  deleteVariant,
   getProductById,
   listProducts,
-  listVariants,
   setProductAvailability,
   updateProduct,
 } from './products.service.js';
@@ -204,96 +199,6 @@ export async function deleteProductController(
 
     await deleteProduct(parsed.data.id, user.establishmentId);
     res.json({ success: true, data: { id: parsed.data.id } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/** POST /api/v1/products/:id/variants — adicionar variação */
-export async function addVariantController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const user = requireUser(req);
-
-    const paramsParsed = productIdParamSchema.safeParse(req.params);
-
-    if (!paramsParsed.success) {
-      throw new AppError(
-        400,
-        'VALIDATION_ERROR',
-        paramsParsed.error.issues[0]?.message ?? 'Parâmetro inválido.',
-      );
-    }
-
-    const bodyParsed = createVariantSchema.safeParse(req.body);
-
-    if (!bodyParsed.success) {
-      throw new AppError(
-        400,
-        'VALIDATION_ERROR',
-        bodyParsed.error.issues[0]?.message ?? 'Dados inválidos.',
-      );
-    }
-
-    const variant = await addVariant(
-      paramsParsed.data.id,
-      bodyParsed.data,
-      user.establishmentId,
-    );
-    res.status(201).json({ success: true, data: variant });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/** GET /api/v1/products/:id/variants — listar variações */
-export async function listVariantsController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const user = requireUser(req);
-    const parsed = productIdParamSchema.safeParse(req.params);
-
-    if (!parsed.success) {
-      throw new AppError(
-        400,
-        'VALIDATION_ERROR',
-        parsed.error.issues[0]?.message ?? 'Parâmetro inválido.',
-      );
-    }
-
-    const variants = await listVariants(parsed.data.id, user.establishmentId);
-    res.json({ success: true, data: variants });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/** DELETE /api/v1/products/:id/variants/:variantId — remover variação */
-export async function deleteVariantController(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const user = requireUser(req);
-    const parsed = variantIdParamSchema.safeParse(req.params);
-
-    if (!parsed.success) {
-      throw new AppError(
-        400,
-        'VALIDATION_ERROR',
-        parsed.error.issues[0]?.message ?? 'Parâmetro inválido.',
-      );
-    }
-
-    await deleteVariant(parsed.data.id, parsed.data.variantId, user.establishmentId);
-    res.json({ success: true, data: { id: parsed.data.variantId } });
   } catch (error) {
     next(error);
   }

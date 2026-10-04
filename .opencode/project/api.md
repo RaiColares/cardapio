@@ -36,8 +36,8 @@ por engano de fora da lista. Espelha o frontend, onde `/admin/*`,
 |-------|--------|
 | `ADMIN` | Total (inclusive gestão de equipe e settings) |
 | `MANAGER` | Total nas rotas operacionais; **sem** gestão de equipe |
-| `WAITER` | Operação: mesas (leitura), pedidos, comandas, pagamentos |
-| `KITCHEN` | Operação: fila de pedidos e transições de preparo |
+| `WAITER` | Operação no seu escopo: mesas sem vínculo ou vinculadas a ele; pedidos, comandas e pagamentos |
+| `KITCHEN` | Operação: fila de pedidos (global) e transições de preparo; mesas apenas sem vínculo |
 
 **Exceção explícita:** a gestão de equipe (`/users` CRUD) NÃO é rota
 operacional e permanece **ADMIN-only** — o MANAGER não administra
@@ -144,13 +144,15 @@ Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `FORBIDDEN`.
 | PATCH | `/tables/:id` | Atualizar mesa |
 | DELETE | `/tables/:id` | Excluir mesa (400 se houver sessões/pedidos) |
 | PATCH | `/tables/:id/status` | Alterar status da mesa |
+| PUT | `/tables/:id/waiters` | Definir garçons vinculados à mesa (MANAGER/ADMIN) |
 
 ### Permissões (FASE 23 — leitura × escrita)
 
 | Rotas | WAITER | KITCHEN | MANAGER | ADMIN |
 |-------|--------|---------|---------|-------|
-| `GET /tables`, `GET /tables/:id` | ✅ | ❌ | ✅ | ✅ |
+| `GET /tables`, `GET /tables/:id` | ✅ (escopo) | ✅ (escopo) | ✅ | ✅ |
 | `POST /tables`, `PUT/PATCH /tables/:id`, `DELETE /tables/:id` | ❌ | ❌ | ✅ | ✅ |
+| `PUT /tables/:id/waiters` | ❌ | ❌ | ✅ | ✅ |
 
 - **Leitura liberada para a operação**: o salão do garçom (`/waiter`)
   lista as mesas para tocar comandas, abrir a conta e acompanhar o
@@ -159,6 +161,18 @@ Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `FORBIDDEN`.
 - **Escrita continua exclusiva de ADMIN/MANAGER**: o WAITER apenas
   enxerga as mesas — não cria, edita nem remove (a allowlist de escrita
   não inclui WAITER/KITCHEN).
+- **Escopo por garçom (FASE 23)**: um `WAITER` só vê (e só opera) mesas
+  **sem garçons vinculados** (bolsa comum do salão) ou mesas em que
+  está explicitamente vinculado. Mesas vinculadas a outros garçons
+  desaparecem do `GET /tables` e o `GET /tables/:id` responde
+  `TABLE_NOT_FOUND` (não vaza a existência). `KITCHEN` também vê apenas
+  mesas sem vínculo, mas **não** tem essa restrição nos pedidos.
+  `ADMIN`/`MANAGER` têm visão global irrestrita.
+- `PUT /tables/:id/waiters` recebe `{ "userIds": ["<uuid>", ...] }`
+  (array, pode ser vazio, máx 50). Substitui o conjunto de vínculos
+  (`set`). Cada usuário precisa ser `WAITER`, **ativo** e do mesmo
+  establishment — senão `400 INVALID_WAITER`.
+- As respostas de mesa incluem `waiters: [{ id, name }]`.
 - `GET /tables` aceita `?areaId=`; `establishmentId` sempre do JWT, então
   um garçom de A jamais vê as mesas de B.
 
@@ -168,7 +182,7 @@ Ciclo de status da mesa no fluxo de comanda: `AVAILABLE` → `OCCUPIED`
 (abertura de sessão) → `BILL_REQUESTED` (solicitação de conta) → `AVAILABLE`
 (fechamento da comanda).
 
-Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `TABLE_NOT_FOUND`, `TABLE_NUMBER_CONFLICT`, `TABLE_HAS_SESSIONS_OR_ORDERS`.
+Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `TABLE_NOT_FOUND`, `TABLE_NUMBER_CONFLICT`, `TABLE_HAS_SESSIONS_OR_ORDERS`, `INVALID_WAITER`.
 
 ## Categorias
 
@@ -194,15 +208,12 @@ Erros: `VALIDATION_ERROR`, `CATEGORY_NOT_FOUND`, `CATEGORY_HAS_PRODUCTS`.
 | PATCH | `/products/:id` | Atualizar produto |
 | DELETE | `/products/:id` | Excluir (400 se houver itens de pedido) |
 | PATCH | `/products/:id/availability` | Alternar disponibilidade |
-| GET | `/products/:id/variants` | Listar variações |
-| POST | `/products/:id/variants` | Criar variação |
-| DELETE | `/products/:id/variants/:variantId` | Excluir variação |
 
 Preços: `Decimal(10,2)`, positivos, máx 9.999.999,99, máx 2 casas decimais.
 `promotionalPrice <= price` (quando informado).
 `price` retornado como `number` normalizado.
 
-Erros: `VALIDATION_ERROR`, `CATEGORY_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `PRODUCT_HAS_ORDERS`, `VARIANT_NOT_FOUND`.
+Erros: `VALIDATION_ERROR`, `CATEGORY_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `PRODUCT_HAS_ORDERS`.
 
 ## Grupos de Adicionais (ModifierGroup)
 
@@ -263,6 +274,10 @@ Rotas privadas. Acesso: ADMIN, MANAGER, WAITER, KITCHEN (RBAC fino na transiçã
   visão gerencial completa;
 - `WAITER`/`KITCHEN`: recebem por padrão a fila viva (`ACTIVE`) +
   `DELIVERED` (pedidos de comandas abertas) — **nunca** `CANCELLED`;
+- **Escopo por garçom (FASE 23)**: além do filtro de status, um `WAITER`
+  só vê pedidos de **mesas sem garçons vinculados** ou de **mesas
+  vinculadas a ele mesmo**. `KITCHEN` **não** é filtrado por vínculo de
+  mesa (a cozinha prepara tudo); `ADMIN`/`MANAGER` têm visão global.
 
 ### Máquina de Estados
 
@@ -286,8 +301,9 @@ PENDING → CONFIRMED → PREPARING → READY → DELIVERED
 | CANCELLED | WAITER, MANAGER, ADMIN |
 
 Ordem de validação: (1) pedido no tenant; (2) transição válida na máquina;
-(3) role autorizada p/ o destino. Erros: `ORDER_NOT_FOUND`,
-`INVALID_STATUS_TRANSITION`, `FORBIDDEN`.
+(3) escopo do garçom — um `WAITER` não opera pedido de mesa vinculada a
+outro garçom (`403 FORBIDDEN`); (4) role autorizada p/ o destino. Erros:
+`ORDER_NOT_FOUND`, `INVALID_STATUS_TRANSITION`, `FORBIDDEN`.
 
 Em sucesso, emite `ORDER_STATUS_UPDATED` (ver WebSocket).
 
@@ -298,6 +314,7 @@ Rotas privadas. Acesso: WAITER, MANAGER, ADMIN.
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/table-sessions/:id/bill` | Resumo financeiro da comanda |
+| PATCH | `/table-sessions/:id/adjustments` | Ajustes manuais (desconto/acréscimo) — só comanda `OPEN` |
 | POST | `/table-sessions/:id/close` | Fechamento atômico (transação) |
 
 ### GET /table-sessions/:id/bill
@@ -306,8 +323,16 @@ Resumo da comanda para fechamento (calculado NO SERVIDOR):
 
 - Ignora pedidos `CANCELLED`;
 - `subtotal` = Σ subtotais dos pedidos válidos;
+- `discount` = Σ descontos dos pedidos + `session.discountAmount` (ajuste manual);
 - `serviceFee` = subtotal × (serviceFeeRate ÷ 100) se habilitado;
-- `total` = subtotal − discount + serviceFee.
+- `extraCharge` = `session.extraChargeAmount` (ajuste manual; ex.: couvert);
+- `total` = `max(0, subtotal − discount + serviceFee + extraCharge)` — **nunca negativo**.
+
+**Ajustes manuais (FASE 23)**: `discountAmount`, `extraChargeAmount` e
+`extraChargeNote` ficam na própria `TableSession` e são alterados via
+`PATCH /table-sessions/:id/adjustments`. O bill é **sempre recalculado no
+servidor**; o cliente nunca envia totais. O PATCH exige a comanda `OPEN`
+(senão `409 SESSION_CLOSED`) e exige ao menos um campo.
 
 **Intenção de pagamento (FASE 22)**: `session` também inclui
 `paymentMethodIntent` (`CASH`|`CARD`|`PIX`, nullable) e `changeRequested`
@@ -322,14 +347,22 @@ realtime `BILL_REQUESTED` foi perdido (fallback do painel).
     "id", "sessionToken", "status", "openedAt", "closedAt",
     "paymentMethodIntent": "CASH",
     "changeRequested": 100,
-    "table": { "number", "status" }
+    "discountAmount": 10,
+    "extraChargeAmount": 5,
+    "extraChargeNote": "Couvert",
+    "table": { "number", "status", "waiters": [{ "id", "name" }] }
   },
   "establishment": { "id", "name", "serviceFeeEnabled", "serviceFeeRate" },
-  "summary": { "ordersCount", "itemsCount", "subtotal", "discount", "serviceFee", "serviceFeeRate", "total" },
+  "summary": { "ordersCount", "itemsCount", "subtotal", "discount", "serviceFee", "serviceFeeRate", "extraCharge", "extraChargeNote", "total" },
   "orders": [{ "id", "orderNumber", "status", "subtotal", "discount", "serviceFee", "total", "items": [...] }],
-  "items": [{ "orderNumber", "productName", "variantName", "quantity", "unitPrice", "totalPrice", "modifiers" }]
+  "items": [{ "orderNumber", "productName", "quantity", "unitPrice", "totalPrice", "modifiers" }]
 }
 ```
+
+> `variantName` continua a ser devolvido em itens de pedidos históricos como
+> snapshot legado (Fase 23 removeu o conceito de variações). Em pedidos novos
+> é sempre `null`; `variantId` enviado por clientes antigos é ignorado e o
+> preço base do produto é usado.
 
 ### POST /table-sessions/:id/close
 
@@ -337,9 +370,13 @@ Fechamento atômico em **uma transação** (`$transaction`):
 
 1. **TRAVA**: se existir pedido em aberto (PENDING, CONFIRMED, PREPARING,
    READY) → `400 SESSION_HAS_OPEN_ORDERS` (comanda não fecha com serviço pendente).
-2. `TableSession` → `CLOSED` + `closedAt`.
-3. `Table` → `AVAILABLE` (liberada para novos clientes).
-4. Emite `SESSION_CLOSED`.
+2. **CONCILIAÇÃO**: `total` recalculado no servidor (inclui ajustes manuais);
+   se `total > 0` e Σ pagamentos `PAID < total` → `400 INSUFFICIENT_PAYMENT`
+   com `{ total, paidAmount, missingAmount }`. Comanda com `total = 0`
+   fecha **sem pagamento** (destrava mesas sem consumo).
+3. `TableSession` → `CLOSED` + `closedAt`.
+4. `Table` → `AVAILABLE` (liberada para novos clientes).
+5. Emite `SESSION_CLOSED` (audiência por mesa/garçom — ver WebSocket).
 
 Erros: `VALIDATION_ERROR`, `SESSION_NOT_FOUND`, `SESSION_ALREADY_CLOSED`,
 `SESSION_HAS_OPEN_ORDERS`, `FORBIDDEN`.
@@ -354,7 +391,7 @@ Rotas privadas. Acesso: WAITER, MANAGER e ADMIN. Multi-tenancy via sessão + JWT
 | POST | `/table-sessions/:id/payments` | Registrar pagamento (PIX injeta mock de gateway) |
 | PATCH | `/payments/:id` | Atualizar valor/método (status via máquina) |
 | PATCH | `/payments/:id/status` | **Transição de estado** (máquina de estados) |
-| DELETE | `/payments/:id` | Excluir (apenas se PENDING) |
+| DELETE | `/payments/:id` | **Estorno** (MANAGER/ADMIN): remove o pagamento e recalcula o saldo |
 
 ### Máquina de Estados
 
@@ -384,6 +421,20 @@ Campos persistidos: `amount`, `method` (`CASH|CARD|PIX`), `status`,
 `gatewayTransactionId`, `gatewayResponse`, `paidAt`/`failedAt`/`refundedAt`/
 `cancelledAt`.
 
+### Estorno de pagamento (FASE 23)
+
+`DELETE /payments/:id` é uma operação de **estorno**, restrita a
+`MANAGER`/`ADMIN` (WAITER/KITCHEN → `403 FORBIDDEN`). Remove o pagamento
+independentemente do status (inclusive `PAID`) e devolve o saldo
+recalculado da comanda:
+
+```json
+{ "removedPaymentId", "tableSessionId", "total", "paidAmount", "remaining", "settled" }
+```
+
+Permite corrigir uma cobrança lançada por engano sem reabrir a comanda.
+Multi-tenancy garantido via comanda + JWT.
+
 Erros: `VALIDATION_ERROR`, `SESSION_NOT_FOUND`, `PAYMENT_NOT_FOUND`,
 `INVALID_PAYMENT_TRANSITION`, `PAYMENT_NOT_PENDING`, `FORBIDDEN`.
 
@@ -402,7 +453,11 @@ Além das travas da Fase 10 (`SESSION_HAS_OPEN_ORDERS`), agora:
 
 Regras: pagamentos `PENDING/FAILED/REFUNDED/CANCELLED` **não** contam para a
 conciliação (refunds criam "buraco"); comanda com total 0 (sem pedidos) fecha
-sem pagamento; excesso de pagamento (troco/gorjeta) não bloqueia.
+sem pagamento; excesso de pagamento (troco/gorjeta) não bloqueia. O `total`
+já inclui descontos de pedido e ajustes manuais da comanda
+(`discountAmount`/`extraChargeAmount`). Um **estorno** (`DELETE /payments/:id`)
+reduz imediatamente o `paidAmount` e, se deixar a comanda em falta, o fecho
+passa a responder `INSUFFICIENT_PAYMENT`.
 
 ### GET `/table-sessions/:id/receipt` (privado) e
 ### GET `/public/table-sessions/:sessionToken/receipt` (público)
@@ -411,9 +466,9 @@ Comprovante fiscal não-oficial — resumo **estático e consolidado** (snapshot
 
 - `receiptId` (= sessionId) e `emittedAt`;
 - `establishment` (nome/contato/endereço) e `table` (nº, nome, área);
-- `summary`: `ordersCount`, `itemsCount`, `subtotal`, `serviceFeeRate`,
-  `serviceFee`, `total`;
-- `items`: **consolidados** por produto/variante/preço/adicionais iguais
+- `summary`: `ordersCount`, `itemsCount`, `subtotal`, `discount`,
+  `serviceFeeRate`, `serviceFee`, `extraCharge`, `extraChargeNote`, `total`;
+- `items`: **consolidados** por produto/preço/adicionais iguais
   (quantidade somada);
 - `payments`: extrato dos pagamentos **aprovados** (PAID) com método, valor,
   `paidAt` e `gatewayTransactionId`;
@@ -467,7 +522,7 @@ Resposta (201): pedido com `orderNumber`, `status: PENDING`, valores,
 itens (com snapshots e adicionais). Emite `NEW_ORDER`.
 
 Erros: `VALIDATION_ERROR`, `SESSION_NOT_FOUND`, `SESSION_CLOSED`,
-`ESTABLISHMENT_INACTIVE`, `PRODUCT_UNAVAILABLE`, `VARIANT_NOT_FOUND`,
+`ESTABLISHMENT_INACTIVE`, `PRODUCT_UNAVAILABLE`,
 `MODIFIER_UNAVAILABLE`, `MODIFIER_GROUP_SINGLE`, `MODIFIER_GROUP_MIN`,
 `MODIFIER_GROUP_MAX`.
 
@@ -479,7 +534,7 @@ credencial de acesso):
 - Sessão deve existir (`SESSION_NOT_FOUND`); lida com sessões `OPEN` ou
   encerradas (extrato consultável após o fechamento).
 - Retorna TODOS os pedidos da sessão **exceto `CANCELLED`**, em ordem
-  cronológica, com itens (snapshots), `variantName`, adicionais e status atual.
+  cronológica, com itens (snapshots), adicionais e status atual.
 - Inclui `sessionStatus`, `table` (número/nome), e `summary` (soma dos
   pedidos não cancelados: `subtotal`, `discount`, `serviceFee`, `total` —
   arredondados a 2 casas).
@@ -631,18 +686,38 @@ routers administrativos (rotas públicas `/auth` e `/public/*` ficam fora).
 ## WebSocket (Realtime)
 
 - Endpoint: mesma origem do HTTP (`/socket.io`), CORS aberto.
+- **Autenticação opcional no handshake (FASE 23)**: o cliente pode enviar
+  um access token JWT em `auth.token` (ou `query.token`). Token inválido
+  derruba a conexão (`AUTH_INVALID_TOKEN`); sem token, a conexão segue
+  anónima (público/legado).
 - Salas:
   - `room_est_{establishmentId}` — painéis do estabelecimento
+  - `room_user_{userId}` — sessões autenticadas do usuário
+  - `room_staff_{establishmentId}` — ADMIN/MANAGER/KITCHEN do estabelecimento
   - `room_table_{tableId}` — mesa específica (cliente)
   - `room_session_{tableSessionId}` — comanda específica (cliente)
-- Entrada: `socket.emit('join_establishment' | 'join_table' | 'join_session', id)`.
+- Ao autenticar, o socket entra automaticamente em `room_est_` e em
+  `room_user_` (WAITER) ou `room_staff_` (demais papéis).
+- Entrada manual: `socket.emit('join_establishment' | 'join_table' | 'join_session', id)`.
 - Confirmações: `joined_establishment` / `joined_table` / `joined_session`.
+- **Audiência por mesa (FASE 23)**: eventos operacionais de uma mesa usam
+  `emitToTableAudience(establishmentId, assignedWaiterIds, ...)`:
+  - mesa **sem** garçons vinculados → `room_est_` (legado) — qualquer
+    socket do salão recebe;
+  - mesa **com** garçons vinculados → `room_user_` de cada garçom
+    vinculado + `room_staff_` (gestão/cozinha). Sockets anónimos (cliente)
+    não recebem estes eventos.
 - Eventos:
-  - `NEW_ORDER` → `room_est_` (pedido criado).
-  - `ORDER_STATUS_UPDATED` → `room_est_` + `room_table_` + `room_session_`.
-  - `BILL_REQUESTED` → `room_est_` + `room_session_` (cliente pediu a conta;
-    payload inclui `paymentMethodIntent` e `changeRequested` desde a FASE 22).
-  - `SESSION_CLOSED` → `room_est_` + `room_table_` + `room_session_`.
+  - `NEW_ORDER` → audiência da mesa (pedido criado).
+  - `ORDER_STATUS_UPDATED` → audiência da mesa + `room_table_` + `room_session_`.
+  - `BILL_REQUESTED` → audiência da mesa + `room_session_` (cliente pediu a
+    conta; payload inclui `paymentMethodIntent` e `changeRequested` desde a FASE 22).
+  - `SESSION_CLOSED` → audiência da mesa + `room_table_` + `room_session_`.
+
+> **Limitação conhecida**: o cliente web atual ainda liga o socket sem JWT
+> (`frontend/src/services/socket.ts`). Enquanto isso, eventos de mesas
+> atribuídas a garçons específicos não chegam ao cliente anónimo; é um
+> follow-up de frontend (enviar o token no handshake).
 
 ## Health
 

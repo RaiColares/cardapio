@@ -130,7 +130,6 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
   function toPayload() {
     return cart.map((item) => ({
       productId: item.productId,
-      variantId: item.variantId,
       modifierIds: item.modifiers.map((modifier) => modifier.id),
       quantity: item.quantity,
     }));
@@ -276,9 +275,6 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
                     <p className="truncate text-sm font-semibold text-stone-900">
                       {item.productName}
                     </p>
-                    {item.variantName && (
-                      <p className="text-xs text-stone-500">{item.variantName}</p>
-                    )}
                     {item.modifiers.length > 0 && (
                       <p className="mt-0.5 text-xs text-stone-500">
                         {item.modifiers.map((modifier) => modifier.name).join(', ')}
@@ -387,18 +383,9 @@ function OrdersTab({
           title="Nenhum pedido ainda"
           description="Seus pedidos desta comanda aparecerão aqui."
         />
-        <div className="pt-1">
-          <Button
-            variant="secondary"
-            size="lg"
-            className="w-full"
-            disabled={billRequested || billPending}
-            loading={billPending}
-            onClick={onRequestBill}
-          >
-            {billRequested ? 'Conta já solicitada' : 'Pedir a conta'}
-          </Button>
-        </div>
+        <p className="rounded-xl bg-stone-50 px-3 py-3 text-center text-xs text-stone-400">
+          Faça um pedido para poder solicitar a conta.
+        </p>
       </div>
     );
   }

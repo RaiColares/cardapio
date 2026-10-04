@@ -2,7 +2,12 @@ import type { Prisma, UserRole } from '@prisma/client';
 
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
-import { emitToEstablishment, emitToRoom } from '../realtime/socket.js';
+import {
+  orderVisibilityWhere,
+  waiterIdsOf,
+  type AuthContext,
+} from '../common/visibility/table-visibility.js';
+import { emitToRoom, emitToTableAudience } from '../realtime/socket.js';
 import { ACTIVE_ORDER_STATUSES, STATUS_TRANSITIONS } from './orders.schemas.js';
 import type {
   ListOrdersQueryInput,
@@ -109,8 +114,9 @@ function normalizeOrder(order: OrderWithItems) {
 export async function listOperationalOrders(
   establishmentId: string,
   query: ListOrdersQueryInput,
-  role: UserRole,
+  viewer: AuthContext,
 ) {
+  const { role } = viewer;
   const where: Record<string, unknown> = { establishmentId };
 
   let statuses: string[] | undefined;
@@ -136,6 +142,9 @@ export async function listOperationalOrders(
     where.tableSessionId = query.tableSessionId;
   }
 
+  // FASE 23 — visibilidade por garçom (mesas atribuídas).
+  Object.assign(where, orderVisibilityWhere(viewer));
+
   const orders = await prisma.order.findMany({
     where,
     select: orderOperationalSelect,
@@ -149,9 +158,14 @@ export async function listOperationalOrders(
 export async function getOperationalOrderById(
   orderId: string,
   establishmentId: string,
+  viewer?: AuthContext,
 ) {
   const order = await prisma.order.findFirst({
-    where: { id: orderId, establishmentId },
+    where: {
+      id: orderId,
+      establishmentId,
+      ...(viewer ? orderVisibilityWhere(viewer) : {}),
+    },
     select: orderOperationalSelect,
   });
 
@@ -183,9 +197,10 @@ const ROLE_BY_TRANSITION: Record<string, UserRole[]> = {
 export async function updateOrderStatus(
   orderId: string,
   input: UpdateOrderStatusInput,
-  establishmentId: string,
-  role: UserRole,
+  viewer: AuthContext,
 ) {
+  const { establishmentId, role } = viewer;
+
   const order = await prisma.order.findFirst({
     where: { id: orderId, establishmentId },
     select: {
@@ -195,11 +210,29 @@ export async function updateOrderStatus(
       tableId: true,
       tableSessionId: true,
       establishmentId: true,
+      table: {
+        select: { waiters: { select: { id: true } } },
+      },
     },
   });
 
   if (!order) {
     throw new AppError(404, 'ORDER_NOT_FOUND', 'Pedido não encontrado.');
+  }
+
+  // FASE 23 — garçom só opera pedidos de mesas sem vínculo ou vinculadas
+  // a ele. Mesa atribuída a outro garçom → 403.
+  const assignedWaiterIds = waiterIdsOf(order.table?.waiters);
+  if (
+    role === 'WAITER' &&
+    assignedWaiterIds.length > 0 &&
+    !assignedWaiterIds.includes(viewer.userId)
+  ) {
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      'Esta mesa está atribuída a outro garçom.',
+    );
   }
 
   const current = order.status;
@@ -233,8 +266,10 @@ export async function updateOrderStatus(
 
   const payload = normalizeOrder(updated);
 
-  // Realtime: painéis do estabelecimento (sala geral) + mesa específica.
-  emitToEstablishment(establishmentId, 'ORDER_STATUS_UPDATED', {
+  // Realtime: respeita os garçons atribuídos à mesa. Mesa sem vínculo
+  // continua indo para a sala geral do estabelecimento; mesa atribuída
+  // vai apenas para os garçons dela + equipe privilegiada.
+  emitToTableAudience(establishmentId, assignedWaiterIds, 'ORDER_STATUS_UPDATED', {
     orderId: order.id,
     orderNumber: order.orderNumber,
     previousStatus: current,

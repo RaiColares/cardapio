@@ -98,7 +98,7 @@ export async function getPublicOrderById(orderId: string) {
  * GET /api/v1/public/table-sessions/:sessionToken/orders
  *
  * Extrato completo da comanda: todos os pedidos da sessão (exceto
- * cancelados) com itens, variantes e adicionais (snapshots) e status
+ * cancelados) com itens e adicionais (snapshots) e status
  * atual. O sessionToken é a credencial de acesso — nenhum dado interno
  * (estabelecimento, IDs de recursos do tenant) é exposto.
  *
@@ -111,6 +111,10 @@ export async function getPublicSessionOrders(sessionToken: string) {
     select: {
       id: true,
       status: true,
+      // FASE 23 — ajustes manuais entram no total a pagar do extrato.
+      discountAmount: true,
+      extraChargeAmount: true,
+      extraChargeNote: true,
       table: { select: { id: true, number: true, name: true } },
     },
   });
@@ -160,6 +164,34 @@ export async function getPublicSessionOrders(sessionToken: string) {
     },
   });
 
+  // Resumo do extrato: snapshots dos pedidos + ajustes manuais da comanda
+  // (FASE 23). O servidor recalcula o total (subtotal − desconto + taxa + acréscimo).
+  const ordersTotals = orders.reduce(
+    (acc, order) => ({
+      subtotal: round2(acc.subtotal + Number(order.subtotal)),
+      discount: round2(acc.discount + Number(order.discount)),
+      serviceFee: round2(acc.serviceFee + Number(order.serviceFee)),
+    }),
+    { subtotal: 0, discount: 0, serviceFee: 0 },
+  );
+
+  const sessionDiscount = round2(Number(session.discountAmount ?? 0));
+  const extraCharge = round2(Number(session.extraChargeAmount ?? 0));
+  const discount = round2(ordersTotals.discount + sessionDiscount);
+  const total = Math.max(
+    0,
+    round2(ordersTotals.subtotal - discount + ordersTotals.serviceFee + extraCharge),
+  );
+
+  const summary = {
+    subtotal: ordersTotals.subtotal,
+    discount,
+    serviceFee: ordersTotals.serviceFee,
+    extraCharge,
+    extraChargeNote: session.extraChargeNote ?? null,
+    total,
+  };
+
   return {
     sessionId: session.id,
     sessionStatus: session.status,
@@ -196,14 +228,6 @@ export async function getPublicSessionOrders(sessionToken: string) {
         })),
       })),
     })),
-    summary: orders.reduce(
-      (acc, order) => ({
-        subtotal: round2(acc.subtotal + Number(order.subtotal)),
-        discount: round2(acc.discount + Number(order.discount)),
-        serviceFee: round2(acc.serviceFee + Number(order.serviceFee)),
-        total: round2(acc.total + Number(order.total)),
-      }),
-      { subtotal: 0, discount: 0, serviceFee: 0, total: 0 },
-    ),
+    summary,
   };
 }

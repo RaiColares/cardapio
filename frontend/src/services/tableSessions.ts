@@ -1,6 +1,12 @@
 import { api } from './api.js';
 
-import type { CreatePaymentInput, Payment, SessionBill } from '../types/domain.js';
+import type {
+  CreatePaymentInput,
+  Payment,
+  PaymentRemovalResult,
+  SessionAdjustmentsInput,
+  SessionBill,
+} from '../types/domain.js';
 
 /**
  * Contratos privados (WAITER/MANAGER/ADMIN) de comanda e pagamentos.
@@ -33,4 +39,28 @@ export async function createPayment(
 export async function closeSession(sessionId: string) {
   const { data } = await api.post(`/table-sessions/${sessionId}/close`);
   return data.data;
+}
+
+/**
+ * DELETE /payments/:id — estorno de pagamento (FASE 23).
+ *
+ * Restrito a MANAGER/ADMIN no backend. Remove o pagamento (mesmo já PAID)
+ * e devolve o saldo recalculado da comanda associada.
+ */
+export async function deletePayment(paymentId: string): Promise<PaymentRemovalResult> {
+  const { data } = await api.delete(`/payments/${paymentId}`);
+  return data.data as PaymentRemovalResult;
+}
+
+/**
+ * PATCH /table-sessions/:id/adjustments — ajustes manuais da comanda
+ * (desconto/acréscimo/observação). O backend recalcula o bill e devolve-o
+ * atualizado, de modo que o total exibido nunca é calculado no frontend.
+ */
+export async function updateSessionAdjustments(
+  sessionId: string,
+  input: SessionAdjustmentsInput,
+): Promise<SessionBill> {
+  const { data } = await api.patch(`/table-sessions/${sessionId}/adjustments`, input);
+  return data.data as SessionBill;
 }

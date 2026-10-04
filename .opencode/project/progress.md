@@ -312,3 +312,61 @@ backend, após a validação da interface SaaS (Fase 19 — Register/Settings/Te
   data inválida → 400; período vazio → header apenas.
 - Auditoria: ADMIN → 200 `{ success:true, data:[] }`; WAITER → 403.
 - Banco intacto (apenas leituras — baseline do seed preservado).
+
+---
+
+## Fase 23 — Frontend: Estorno, Ajustes, Garçons de Mesa e Conta
+
+**Objetivo**: consumir os contratos da Fase 23 (backend já validado; ver
+`api.md`) nas interfaces de operação e no menu do cliente, sem mover regras
+financeiras para o frontend (todos os valores continuam a ser recalculados e
+devolvidos pelo backend).
+
+### Entregas
+
+- **Estorno de pagamento** (`components/waiter/BillDrawer.tsx`): botão de
+  lixeira por pagamento, visível apenas a MANAGER/ADMIN (espelha o `authorize`
+  do backend). Abre modal de confirmação e chama `DELETE /payments/:id`;
+  invalida `['table-sessions', sessionId]` para recarregar bill + pagamentos.
+- **Ajustes manuais** (`BillDrawer.tsx`): secção exclusiva de MANAGER/ADMIN
+  com `CurrencyInput` de desconto/acréscimo e motivo (obrigatório quando há
+  acréscimo, máx. 200). Envia `PATCH /table-sessions/:id/adjustments`; o bill
+  recalculado é reexibido. Resumo mostra linhas de desconto e acréscimo.
+- **Garçons responsáveis** (`pages/admin/AdminTablesPage.tsx`): checkboxes no
+  modal de criar/editar mesa. Como `POST/PUT /tables` não recebe vínculos, o
+  frontend grava a mesa e em seguida chama `PUT /tables/:id/waiters`. O cartão
+  da mesa lista os garçons vinculados (ou "Sem garçom vinculado").
+- **Conta sem consumo** (`components/menu/CustomerPanel.tsx`): comanda sem
+  pedidos deixa de oferecer "Pedir a conta" (mostra aviso "Faça um pedido para
+  poder solicitar a conta"). O pedido só fica disponível quando há pedidos.
+- **Fecho de comanda a R$ 0,00** (`BillDrawer.tsx`): botão "Fechar mesa"
+  permanece habilitado sem consumo, com aviso "Sem consumo: o fecho é permitido
+  e libera a mesa" (o backend valida e libera a mesa).
+
+### Serviços/tipos
+
+- `services/tableSessions.ts`: `deletePayment`, `updateSessionAdjustments`.
+- `services/physical.ts`: `setTableWaiters`.
+- `types/domain.ts`: `ApiTable.waiters`, `SessionBill` (ajustes),
+  `PaymentRemovalResult`, `SessionAdjustmentsInput`.
+
+### Limitações / necessidades de backend (a comunicar ao project-manager)
+
+1. **`GET /users` é ADMIN-only**: o MANAGER não consegue listar a equipa para
+   escolher garçons. Mitigação atual: para MANAGER a lista é derivada dos
+   garçons já vinculados em `GET /tables`. Solução desejada: permitir leitura
+   de utilizadores (role WAITER) a MANAGER, ou expor `GET /users?role=WAITER`.
+2. **Sessão por mesa sem pedidos**: o painel do garçom abre a conta a partir de
+   `orders[0].tableSession.id`. Uma mesa OCCUPIED criada por leitura de QR sem
+   qualquer pedido não tem sessão acessível pelo frontend (não existe rota
+   privada "sessão por mesa"). O `BillDrawer` já fecha a R$ 0,00, mas é
+   necessário um meio de a abrir. Solução desejada: `GET /tables/:id/active-session`
+   ou incluir `activeSessionId` em `GET /tables`.
+
+### Validação
+
+- `npm run typecheck` (`tsc --noEmit`) limpo.
+- `npm run build` (`tsc --noEmit && vite build`) limpo.
+- `vite preview` → 200 e `<title>Cardápio Digital</title>`.
+- Dev server Vite transforma com 200 `main.tsx`, `BillDrawer.tsx`,
+  `AdminTablesPage.tsx` e `CustomerPanel.tsx`.

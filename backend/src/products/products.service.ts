@@ -4,13 +4,12 @@ import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
 import type {
   CreateProductInput,
-  CreateVariantInput,
   ListProductsQuery,
   UpdateProductInput,
 } from './products.schemas.js';
 
 /**
- * Service do módulo de Produtos e Variações.
+ * Service do módulo de Produtos.
  *
  * REGRA DE OURO: o establishmentId NUNCA vem do cliente e o categoryId
  * é validado quanto ao tenant antes de qualquer vínculo.
@@ -18,10 +17,6 @@ import type {
 
 const productInclude = {
   category: { select: { id: true, name: true } },
-  variants: {
-    where: { active: true },
-    orderBy: { displayOrder: 'asc' as const },
-  },
 } satisfies Prisma.ProductInclude;
 
 /** Converte Decimal do Prisma em number para o contrato da API. */
@@ -33,16 +28,11 @@ function normalizePrice(value: unknown): number | null {
 function serializeProduct(product: {
   price: unknown;
   promotionalPrice: unknown;
-  variants?: { price: unknown }[];
 }) {
   return {
     ...product,
     price: normalizePrice(product.price),
     promotionalPrice: normalizePrice(product.promotionalPrice),
-    variants: product.variants?.map((variant) => ({
-      ...variant,
-      price: normalizePrice(variant.price),
-    })),
   };
 }
 
@@ -95,7 +85,7 @@ async function ensureCategoryBelongsToEstablishment(
   }
 }
 
-/** Cria um produto com variantes vazias e disponível por padrão. */
+/** Cria um produto disponível por padrão. */
 export async function createProduct(
   input: CreateProductInput,
   establishmentId: string,
@@ -184,7 +174,6 @@ export async function setProductAvailability(
  *
  * Proteção de integridade: se existirem itens de pedido atrelados,
  * retorna 400 amigável (a FK order_items.product_id é RESTRICT).
- * Variantes são removidas via CASCADE.
  */
 export async function deleteProduct(id: string, establishmentId: string) {
   await getProductById(id, establishmentId);
@@ -202,59 +191,4 @@ export async function deleteProduct(id: string, establishmentId: string) {
   }
 
   await prisma.product.delete({ where: { id } });
-}
-
-/**
- * Adiciona uma variação (tamanho/preço, ex: P, M, G) a um produto.
- */
-export async function addVariant(
-  productId: string,
-  input: CreateVariantInput,
-  establishmentId: string,
-) {
-  await getProductById(productId, establishmentId);
-
-  const variant = await prisma.productVariant.create({
-    data: {
-      productId,
-      name: input.name,
-      price: input.price,
-      displayOrder: input.displayOrder ?? 0,
-      active: input.active ?? true,
-    },
-  });
-
-  return { ...variant, price: normalizePrice(variant.price) };
-}
-
-/** Lista todas as variações de um produto (ativas e inativas). */
-export async function listVariants(productId: string, establishmentId: string) {
-  await getProductById(productId, establishmentId);
-
-  const variants = await prisma.productVariant.findMany({
-    where: { productId },
-    orderBy: { displayOrder: 'asc' },
-  });
-
-  return variants.map((variant) => ({ ...variant, price: normalizePrice(variant.price) }));
-}
-
-/** Remove uma variação de um produto. */
-export async function deleteVariant(
-  productId: string,
-  variantId: string,
-  establishmentId: string,
-) {
-  await getProductById(productId, establishmentId);
-
-  const variant = await prisma.productVariant.findFirst({
-    where: { id: variantId, productId },
-    select: { id: true },
-  });
-
-  if (!variant) {
-    throw new AppError(404, 'VARIANT_NOT_FOUND', 'Variação não encontrada.');
-  }
-
-  await prisma.productVariant.delete({ where: { id: variantId } });
 }

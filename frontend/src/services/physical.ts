@@ -60,3 +60,17 @@ export async function updateTable(id: string, payload: TablePayload): Promise<Ap
 export async function deleteTable(id: string): Promise<void> {
   await api.delete(`/tables/${id}`);
 }
+
+/**
+ * PUT /tables/:id/waiters (FASE 23) — substitui os garçons vinculados.
+ *
+ * O backend valida que todos os `userIds` são WAITER ativos do mesmo
+ * estabelecimento (senão `400 INVALID_WAITER`). Enviar `[]` limpa o vínculo.
+ */
+export async function setTableWaiters(tableId: string, userIds: string[]): Promise<ApiTable> {
+  const { data } = await api.put<{ success: true; data: ApiTable }>(
+    `/tables/${tableId}/waiters`,
+    { userIds },
+  );
+  return data.data;
+}

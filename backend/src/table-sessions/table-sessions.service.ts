@@ -3,8 +3,8 @@ import type { Order, OrderStatus, Prisma, TableSession } from '@prisma/client';
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
 import {
-  emitToEstablishment,
   emitToRoom,
+  emitToTableAudience,
   sessionRoom,
 } from '../realtime/socket.js';
 
@@ -37,6 +37,10 @@ const sessionWithContextSelect = {
   // FASE 22 — intenção de pagamento e troco informados no request-bill.
   paymentMethodIntent: true,
   changeRequested: true,
+  // FASE 23 — ajustes manuais da comanda (desconto/acréscimo/nota).
+  discountAmount: true,
+  extraChargeAmount: true,
+  extraChargeNote: true,
   createdAt: true,
   updatedAt: true,
   table: {
@@ -47,6 +51,8 @@ const sessionWithContextSelect = {
       status: true,
       qrCode: true,
       area: { select: { id: true, name: true } },
+      // FASE 23 — garçons vinculados (roteamento realtime + visibilidade).
+      waiters: { select: { id: true, name: true } },
     },
   },
   establishment: {
@@ -103,6 +109,10 @@ function serializeSession(session: SessionWithContext) {
     paymentMethodIntent: session.paymentMethodIntent ?? null,
     changeRequested:
       session.changeRequested != null ? Number(session.changeRequested) : null,
+    // FASE 23 — ajustes manuais da comanda (Decimal → number).
+    discountAmount: Number(session.discountAmount ?? 0),
+    extraChargeAmount: Number(session.extraChargeAmount ?? 0),
+    extraChargeNote: session.extraChargeNote ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     table: { ...session.table, number: session.table.number },
@@ -225,22 +235,33 @@ function computeBill(session: SessionWithContext, orders: OrderLite[]) {
   const subtotal = round2(
     activeOrders.reduce((sum, order) => sum + Number(order.subtotal), 0),
   );
-  const discount = round2(
+
+  // Desconto = descontos por pedido (snapshot) + desconto manual da comanda.
+  const ordersDiscount = round2(
     activeOrders.reduce((sum, order) => sum + Number(order.discount), 0),
   );
+  const sessionDiscount = round2(Number(session.discountAmount ?? 0));
+  const discount = round2(ordersDiscount + sessionDiscount);
 
   const serviceFeeEnabled = session.establishment.serviceFeeEnabled;
   const serviceFeeRate = Number(session.establishment.serviceFeeRate ?? 0);
   const serviceFee = serviceFeeEnabled ? round2(subtotal * (serviceFeeRate / 100)) : 0;
 
-  const total = round2(subtotal - discount + serviceFee);
+  // FASE 23 — acréscimo manual da comanda (ex.: couvert, item extra).
+  const extraCharge = round2(Number(session.extraChargeAmount ?? 0));
+
+  // O total nunca é negativo (desconto manual não gera crédito).
+  const total = Math.max(0, round2(subtotal - discount + serviceFee + extraCharge));
 
   return {
     summary: {
       ordersCount: activeOrders.length,
       itemsCount: items.length,
       subtotal,
+      ordersDiscount,
       discount,
+      extraCharge,
+      extraChargeNote: session.extraChargeNote ?? null,
       serviceFee,
       serviceFeeRate: serviceFeeEnabled ? serviceFeeRate : 0,
       total,
@@ -325,8 +346,14 @@ export async function requestBill(sessionToken: string, input: RequestBillInput 
     requestedAt: new Date().toISOString(),
   };
 
-  // Painéis do estabelecimento (garçons/ADMIN/MANAGER).
-  emitToEstablishment(session.establishment.id, 'BILL_REQUESTED', payload);
+  // Painéis (FASE 23): mesa atribuída → só os garçons dela + equipe
+  // privilegiada; mesa sem vínculo → sala geral do estabelecimento.
+  emitToTableAudience(
+    session.establishment.id,
+    session.table.waiters.map((waiter) => waiter.id),
+    'BILL_REQUESTED',
+    payload,
+  );
 
   // Mesa/comanda específica (cliente) — confirmação.
   emitToRoom(sessionRoom(session.id), 'BILL_REQUESTED', payload);
@@ -444,7 +471,10 @@ export async function closeSession(id: string, establishmentId: string) {
   const totalCents = Math.round(total * 100);
   const paidCents = Math.round(paidAmount * 100);
 
-  if (paidCents < totalCents) {
+  // Comanda sem consumo (total 0) é fechável mesmo sem pagamento —
+  // evita "mesa travada" por uma comanda vazia. Só exige cobertura
+  // quando há valor a pagar.
+  if (totalCents > 0 && paidCents < totalCents) {
     throw new AppError(
       400,
       'INSUFFICIENT_PAYMENT',
@@ -487,8 +517,13 @@ export async function closeSession(id: string, establishmentId: string) {
     tableStatus: 'AVAILABLE',
   };
 
-  // Painéis do estabelecimento + mesa/comanda específica.
-  emitToEstablishment(establishmentId, 'SESSION_CLOSED', payload);
+  // Painéis (FASE 23): mesa atribuída → só os garçons dela + equipe.
+  emitToTableAudience(
+    establishmentId,
+    session.table.waiters.map((waiter) => waiter.id),
+    'SESSION_CLOSED',
+    payload,
+  );
   emitToRoom(sessionRoom(id), 'SESSION_CLOSED', payload);
   emitToRoom(`room_table_${session.table.id}`, 'SESSION_CLOSED', payload);
 
@@ -500,10 +535,92 @@ export async function closeSession(id: string, establishmentId: string) {
 }
 
 // ---------------------------------------------------------------
+// Ajustes manuais da comanda (FASE 23)
+// ---------------------------------------------------------------
+
+/** Dados de ajuste manual aceitos no PATCH /table-sessions/:id/adjustments. */
+export interface SessionAdjustmentsInput {
+  discountAmount?: number;
+  extraChargeAmount?: number;
+  extraChargeNote?: string | null;
+}
+
+/**
+ * PATCH /table-sessions/:id/adjustments
+ *
+ * Guarda descontos/acréscimos/nota manuais da comanda. Só é permitido em
+ * comandas OPEN (uma comanda encerrada é imutável). O total a pagar é
+ * recalculado no servidor e devolvido como bill atualizado.
+ */
+export async function updateSessionAdjustments(
+  id: string,
+  input: SessionAdjustmentsInput,
+  establishmentId: string,
+) {
+  const session = await findSessionById(id, establishmentId);
+
+  if (session.status !== 'OPEN') {
+    throw new AppError(409, 'SESSION_CLOSED', 'A comanda já está encerrada.');
+  }
+
+  const data: {
+    discountAmount?: number;
+    extraChargeAmount?: number;
+    extraChargeNote?: string | null;
+  } = {};
+
+  if (input.discountAmount !== undefined) data.discountAmount = input.discountAmount;
+  if (input.extraChargeAmount !== undefined) {
+    data.extraChargeAmount = input.extraChargeAmount;
+  }
+  if (input.extraChargeNote !== undefined) data.extraChargeNote = input.extraChargeNote;
+
+  await prisma.tableSession.update({ where: { id }, data });
+
+  // Autoridade do servidor: devolve o bill recalculado.
+  return getSessionBill(id, establishmentId);
+}
+
+// ---------------------------------------------------------------
+// Conciliação financeira (reutilizada no estorno de pagamentos)
+// ---------------------------------------------------------------
+
+export interface SessionFinancials {
+  total: number;
+  paidAmount: number;
+  remaining: number;
+  settled: boolean;
+}
+
+/**
+ * Recalcula o resumo financeiro de uma comanda (qualquer status).
+ *
+ * Usado pelo estorno (DELETE /payments/:id) para devolver, após remover
+ * o pagamento, o saldo/total atualizado da comanda associada.
+ */
+export async function getSessionFinancials(
+  id: string,
+  establishmentId: string,
+): Promise<SessionFinancials> {
+  const session = await findSessionById(id, establishmentId);
+  const orders = await fetchSessionOrders(id);
+  const { summary } = computeBill(session, orders);
+  const { paidAmount } = await sumPaidPayments(id);
+  const remaining = round2(summary.total - paidAmount);
+
+  return {
+    total: summary.total,
+    paidAmount,
+    remaining,
+    settled: remaining <= 0.004,
+  };
+}
+
+// ---------------------------------------------------------------
 // Comprovante (Receipt)
 // ---------------------------------------------------------------
 
-/** Consolida itens iguais (mesmo produto/variante/preço/adicionais). */
+/** Consolida itens iguais (mesmo produto/preço/adicionais); o `variantName` legado entra na chave por compatibilidade histórica. */
 function consolidateItems(items: ReturnType<typeof computeBill>['items']) {
   const consolidated = new Map<string, {
     productName: string;
@@ -592,6 +709,9 @@ async function buildReceipt(session: SessionWithContext) {
       ordersCount: summary.ordersCount,
       itemsCount: summary.itemsCount,
       subtotal: summary.subtotal,
+      discount: summary.discount,
+      extraCharge: summary.extraCharge,
+      extraChargeNote: summary.extraChargeNote,
       serviceFeeRate: summary.serviceFeeRate,
       serviceFee: summary.serviceFee,
       total: summary.total,

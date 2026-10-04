@@ -119,14 +119,6 @@ export interface ApiCategory {
   _count?: { products: number };
 }
 
-export interface ApiProductVariant {
-  id: string;
-  name: string;
-  price: number;
-  displayOrder: number;
-  active: boolean;
-}
-
 export interface ApiProduct {
   id: string;
   categoryId: string;
@@ -145,7 +137,6 @@ export interface ApiProduct {
   createdAt: string;
   updatedAt: string;
   category: { id: string; name: string };
-  variants: ApiProductVariant[];
 }
 
 export interface ApiArea {
@@ -170,6 +161,8 @@ export interface ApiTable {
   createdAt: string;
   updatedAt: string;
   area: { id: string; name: string };
+  /** FASE 23 — garçons vinculados à mesa (NxN). Vazio/ausente = sem vínculo. */
+  waiters?: { id: string; name: string }[];
 }
 
 /* ============================================================
@@ -193,13 +186,6 @@ export interface MenuEstablishment {
   state: string | null;
   serviceFeeEnabled: boolean;
   serviceFeeRate: number | null;
-}
-
-export interface MenuVariant {
-  id: string;
-  name: string;
-  price: number;
-  displayOrder: number;
 }
 
 export type ModifierSelectionType = 'SINGLE' | 'MULTIPLE';
@@ -231,7 +217,6 @@ export interface MenuProduct {
   allergens: string | null;
   displayOrder: number;
   featured: boolean;
-  variants: MenuVariant[];
   modifierGroups: ModifierGroup[];
 }
 
@@ -367,7 +352,17 @@ export interface SessionBill {
     /** Intenção de pagamento (FASE 22) — opcional até o backend expor no bill. */
     paymentMethodIntent?: PaymentMethod | null;
     changeRequested?: number | null;
-    table: { id: string; number: string; name: string | null; area?: { id: string; name: string } | null };
+    /** FASE 23 — ajustes manuais persistidos na comanda. */
+    discountAmount?: number;
+    extraChargeAmount?: number;
+    extraChargeNote?: string | null;
+    table: {
+      id: string;
+      number: string;
+      name: string | null;
+      area?: { id: string; name: string } | null;
+      waiters?: { id: string; name: string }[];
+    };
     establishment: { id: string; name: string; slug: string; serviceFeeRate: number };
   };
   establishment: { id: string; name: string; serviceFeeEnabled: boolean; serviceFeeRate: number };
@@ -376,6 +371,9 @@ export interface SessionBill {
     itemsCount: number;
     subtotal: number;
     discount: number;
+    /** FASE 23 — acréscimo manual da comanda. */
+    extraCharge: number;
+    extraChargeNote: string | null;
     serviceFee: number;
     serviceFeeRate: number;
     total: number;
@@ -435,6 +433,23 @@ export interface CreatePaymentInput {
   method: PaymentMethod;
   status: 'PENDING' | 'PAID';
   paidAt?: string | null;
+}
+
+/** Resultado do estorno (DELETE /payments/:id) — saldo recalculado no servidor. */
+export interface PaymentRemovalResult {
+  removedPaymentId: string;
+  tableSessionId: string;
+  total: number;
+  paidAmount: number;
+  remaining: number;
+  settled: boolean;
+}
+
+/** PATCH /table-sessions/:id/adjustments — ajustes manuais da comanda. */
+export interface SessionAdjustmentsInput {
+  discountAmount: number;
+  extraChargeAmount: number;
+  extraChargeNote: string | null;
 }
 
 /* ============================================================

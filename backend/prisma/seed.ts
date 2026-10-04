@@ -15,7 +15,7 @@ import { prisma } from '../src/common/prisma/prisma.js';
  * - dados de teste previsíveis, reutilizáveis nas fases seguintes.
  *
  * IDs determinísticos mantêm compatibilidade com os cenários de teste
- * usados desde a Fase 8 (produtos, variantes e grupo "Gelo").
+ * usados desde a Fase 8 (produtos e grupo "Gelo").
  *
  * Idempotente: executar quantas vezes for necessário.
  *
@@ -34,8 +34,6 @@ const T = {
   mesa01: '744e9226-e0b5-4864-ad85-54687dc6a86a',
   suco: '3ea01710-9099-4f14-a8ec-b7a592835998',
   coca: '1dd0f5bc-af6f-4994-9037-9fc09702436d',
-  cocaLata: 'd4444444-4444-4444-8444-444444444444',
-  cocaLitro: 'e5555555-5555-4555-8555-555555555555',
   geloGroup: 'a1111111-1111-4111-8111-111111111111',
   geloCom: 'b2222222-2222-4222-8222-222222222222',
   geloExtra: 'c3333333-3333-4333-8333-333333333333',
@@ -113,7 +111,6 @@ async function main(): Promise<void> {
     prisma.productModifierGroup.deleteMany({ where: { product: { establishmentId: estId } } }),
     prisma.modifier.deleteMany({ where: { modifierGroup: { establishmentId: estId } } }),
     prisma.modifierGroup.deleteMany({ where: { establishmentId: estId } }),
-    prisma.productVariant.deleteMany({ where: { product: { establishmentId: estId } } }),
     prisma.product.deleteMany({ where: { establishmentId: estId } }),
     prisma.category.deleteMany({ where: { establishmentId: estId } }),
     prisma.table.deleteMany({ where: { establishmentId: estId } }),
@@ -183,13 +180,12 @@ async function main(): Promise<void> {
   });
 
   // ---------------------------------------------------------------
-  // 8. Produtos + variações + vínculo com o grupo "Gelo"
+  // 8. Produtos + vínculo com o grupo "Gelo"
   // ---------------------------------------------------------------
   const products: Array<{
     id: string;
     name: string;
     price: number;
-    variants?: Array<{ id: string; name: string; price: number }>;
     withIce?: boolean;
   }> = [
     {
@@ -203,10 +199,6 @@ async function main(): Promise<void> {
       name: 'Coca-Cola 350ml',
       price: 8.5,
       withIce: true,
-      variants: [
-        { id: T.cocaLata, name: 'Lata', price: 12 },
-        { id: T.cocaLitro, name: '1 Litro', price: 10 },
-      ],
     },
     { id: 'f0000000-0000-4000-8000-000000000001', name: 'Água Mineral', price: 4, withIce: true },
     { id: 'f0000000-0000-4000-8000-000000000002', name: 'Cerveja Pilsen', price: 9, withIce: true },
@@ -225,9 +217,6 @@ async function main(): Promise<void> {
         available: true,
         active: true,
         displayOrder: products.indexOf(product),
-        variants: product.variants
-          ? { create: product.variants.map((v) => ({ id: v.id, name: v.name, price: v.price })) }
-          : undefined,
         modifierGroups: product.withIce
           ? { create: [{ modifierGroupId: geloGroup.id, displayOrder: 0 }] }
           : undefined,

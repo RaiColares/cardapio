@@ -671,7 +671,6 @@ function ProductCard({
           {showCategory && `${product.category.name} · `}
           {formatBRL(product.price)}
           {product.promotionalPrice !== null && ` → promo ${formatBRL(product.promotionalPrice)}`}
-          {product.variants.length > 0 && ` · ${product.variants.length} variações`}
         </p>
       </div>
 

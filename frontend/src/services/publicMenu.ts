@@ -30,7 +30,6 @@ export async function getPublicMenu(slug: string): Promise<PublicMenu> {
 
 export interface PublicOrderPayloadItem {
   productId: string;
-  variantId?: string | null;
   modifierIds?: string[];
   quantity: number;
   notes?: string | null;
