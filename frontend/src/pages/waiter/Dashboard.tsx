@@ -88,9 +88,24 @@ export function WaiterDashboard() {
     return [...map.values()];
   }, [tablesQuery.data]);
 
-  /** Busca a comanda da mesa a partir dos seus pedidos (não há rota de listagem de sessões). */
+  /**
+   * Abre a conta da mesa.
+   *
+   * Caminho preferido: a própria mesa informa a comanda aberta
+   * (`activeSessionId` — FASE 23), o que funciona mesmo SEM pedidos (mesa
+   * ocupada por leitura de QR e "travada"). Fallback: deriva a sessão a
+   * partir do último pedido da mesa (payload antigo/sem sessão em aberto).
+   */
   async function openBillForTable(table: ApiTable) {
-    if (table.status === 'AVAILABLE') return;
+    if (table.status === 'AVAILABLE' && !table.activeSessionId) return;
+
+    const title = `Mesa ${table.number}${table.name ? ` · ${table.name}` : ''}`;
+
+    if (table.activeSessionId) {
+      setBill({ sessionId: table.activeSessionId, title });
+      return;
+    }
+
     setResolvingTable(table.id);
     try {
       const orders = await listOrders({ tableId: table.id, order: 'desc' });
@@ -99,10 +114,7 @@ export function WaiterDashboard() {
         showToast('info', 'Nenhum pedido nesta mesa para abrir a conta.');
         return;
       }
-      setBill({
-        sessionId: session.id,
-        title: `Mesa ${table.number}${table.name ? ` · ${table.name}` : ''}`,
-      });
+      setBill({ sessionId: session.id, title });
     } catch (error) {
       showToast('error', error instanceof Error ? error.message : 'Erro ao abrir a conta.');
     } finally {
@@ -312,13 +324,15 @@ function TableCard({
   loading: boolean;
   onOpen: () => void;
 }) {
-  const clickable = table.status !== 'AVAILABLE';
+  // Mesas ocupadas/em conta e mesas com comanda aberta (mesmo sem pedidos)
+  // são clicáveis — o activeSessionId garante o acesso à gaveta da conta.
+  const clickable = table.status !== 'AVAILABLE' || Boolean(table.activeSessionId);
   return (
     <button
       type="button"
       onClick={onOpen}
       disabled={!clickable || loading}
-      aria-label={`Mesa ${table.number}${table.name ? ` ${table.name}` : ''} — ${table.status === 'AVAILABLE' ? 'livre' : 'abrir conta'}`}
+      aria-label={`Mesa ${table.number}${table.name ? ` ${table.name}` : ''} — ${clickable ? 'abrir conta' : 'livre'}`}
       className={cn(
         'flex min-h-28 flex-col items-start rounded-2xl border-2 p-3 text-left transition-all',
         clickable

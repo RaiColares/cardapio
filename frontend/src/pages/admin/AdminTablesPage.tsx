@@ -29,7 +29,6 @@ import {
 } from '../../services/physical.js';
 import type { TablePayload } from '../../services/physical.js';
 import { listTeamUsers } from '../../services/team.js';
-import { useAuthStore } from '../../stores/authStore.js';
 import type { ApiArea, ApiTable } from '../../types/domain.js';
 
 /**
@@ -82,10 +81,6 @@ function emptyForm(): TableFormValues {
 export function AdminTablesPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const role = useAuthStore((state) => state.role);
-  // A gestão da equipa (GET /users) é exclusiva do ADMIN; o MANAGER pode
-  // vincular garçons pela rota dedicada, mas não listar credenciais.
-  const isAdmin = role === 'ADMIN';
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<ApiTable | null>(null);
@@ -96,33 +91,22 @@ export function AdminTablesPage() {
   const tablesQuery = useQuery({ queryKey: ['tables'], queryFn: listTables });
   const areasQuery = useQuery({ queryKey: ['areas'], queryFn: listAreas });
 
-  // Lista completa de garçons (ADMIN). Habilitada só com o modal aberto.
+  // Lista de garçons via GET /users: ADMIN vê toda a equipe; MANAGER vê
+  // WAITER/KITCHEN (filtrado no backend, FASE 23.1). Habilitada com o modal.
   const teamQuery = useQuery({
     queryKey: ['team'],
     queryFn: listTeamUsers,
-    enabled: isAdmin && modalMode !== null,
+    enabled: modalMode !== null,
   });
 
-  // Opções do seletor de garçons. Para MANAGER (sem acesso ao CRUD de
-  // equipa), limita-se aos garçons já vinculados a mesas.
-  const waiterOptions = useMemo(() => {
-    if (isAdmin) {
-      return (teamQuery.data ?? [])
+  // Opções do seletor de garçons: apenas WAITER ativos.
+  const waiterOptions = useMemo(
+    () =>
+      (teamQuery.data ?? [])
         .filter((member) => member.role === 'WAITER' && member.active)
-        .map((member) => ({ id: member.id, name: member.name }));
-    }
-
-    const map = new Map<string, { id: string; name: string }>();
-    for (const table of tablesQuery.data ?? []) {
-      for (const waiter of table.waiters ?? []) {
-        map.set(waiter.id, waiter);
-      }
-    }
-    for (const waiter of editing?.waiters ?? []) {
-      map.set(waiter.id, waiter);
-    }
-    return [...map.values()];
-  }, [isAdmin, teamQuery.data, tablesQuery.data, editing]);
+        .map((member) => ({ id: member.id, name: member.name })),
+    [teamQuery.data],
+  );
 
   const {
     register,
@@ -405,14 +389,16 @@ export function AdminTablesPage() {
                 <legend className="px-1 text-sm font-semibold text-stone-700">
                   Garçons responsáveis
                 </legend>
-                {isAdmin && teamQuery.isLoading ? (
+                {teamQuery.isLoading ? (
                   <p className="text-sm text-stone-400">Carregando garçons…</p>
-                ) : waiterOptions.length === 0 ? (
-                  <p className="text-sm text-stone-400">
-                    {isAdmin
-                      ? 'Nenhum garçom ativo cadastrado.'
-                      : 'Nenhum garçom vinculado a mesas ainda.'}
+                ) : teamQuery.isError ? (
+                  <p className="text-sm text-danger-600">
+                    {teamQuery.error instanceof Error
+                      ? teamQuery.error.message
+                      : 'Não foi possível carregar os garçons.'}
                   </p>
+                ) : waiterOptions.length === 0 ? (
+                  <p className="text-sm text-stone-400">Nenhum garçom ativo cadastrado.</p>
                 ) : (
                   <div className="mt-1 max-h-40 space-y-1.5 overflow-y-auto">
                     {waiterOptions.map((waiter) => (
@@ -439,9 +425,7 @@ export function AdminTablesPage() {
                   </div>
                 )}
                 <p className="mt-2 text-xs text-stone-400">
-                  {isAdmin
-                    ? 'Sem vínculo, a mesa fica visível a todos os garçons.'
-                    : 'Lista limitada aos garçons já vinculados a mesas (gestão de equipa é exclusiva do ADMIN).'}
+                  Sem vínculo, a mesa fica visível a todos os garçons.
                 </p>
               </fieldset>
 

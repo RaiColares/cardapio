@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { authenticate } from '../common/middlewares/authenticate.js';
-import { authorizeAdminOnly } from '../common/middlewares/authorize.js';
+import { authorize, authorizeAdminOnly } from '../common/middlewares/authorize.js';
 import {
   createUserController,
   deleteUserController,
@@ -15,6 +15,9 @@ import {
  * Rotas de Usuários.
  *
  * - GET /me: qualquer role autenticada (perfil próprio).
+ * - GET /: ADMIN e MANAGER (FASE 23). O MANAGER precisa listar a equipe
+ *   operacional (WAITER/KITCHEN) para vincular garçons às mesas; o service
+ *   restringe a resposta do MANAGER a esses papéis.
  * - Demais rotas (CRUD da equipe): SOMENTE ADMIN (FASE 18).
  *
  * EXCEÇÃO DOCUMENTADA à regra dos papéis elevados (ADMIN/MANAGER com
@@ -33,10 +36,13 @@ export const usersRouter = Router();
 // Registrada ANTES do CRUD para que "me" não seja capturada por "/:id".
 usersRouter.get('/me', authenticate, meController);
 
+// Listagem da equipe: ADMIN (todos) e MANAGER (apenas WAITER/KITCHEN).
+// Registrada ANTES do `use(authorizeAdminOnly)` para não ser bloqueada.
+usersRouter.get('/', authenticate, authorize('ADMIN', 'MANAGER'), listUsersController);
+
 // CRUD da equipe restrito ao ADMIN — establishmentId sempre do token.
 usersRouter.use(authenticate, authorizeAdminOnly());
 
-usersRouter.get('/', listUsersController);
 usersRouter.get('/:id', getUserController);
 usersRouter.post('/', createUserController);
 usersRouter.put('/:id', updateUserController);

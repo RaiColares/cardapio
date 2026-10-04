@@ -10,7 +10,22 @@ export interface LogoutButtonProps {
   className?: string;
   /** Chamado após encerrar a sessão (ex.: fechar o drawer de navegação). */
   onLogout?: () => void;
+  /**
+   * 'default' = sidebar clara (largura total);
+   * 'onDark' = cabeçalhos escuros (Garçom/Cozinha), compacto.
+   */
+  variant?: 'default' | 'onDark';
 }
+
+/**
+ * Aparência por contexto. As classes de dimensão/cor ficam aqui (e não no
+ * base) para que o variant defina a largura/altura correta sem depender de
+ * ordem de regras do Tailwind — `cn` não faz merge de utilitários.
+ */
+const variantClasses: Record<NonNullable<LogoutButtonProps['variant']>, string> = {
+  default: 'h-11 w-full text-stone-600 hover:bg-red-50 hover:text-red-700',
+  onDark: 'h-10 w-auto shrink-0 text-white/90 hover:bg-white/10 hover:text-white',
+};
 
 /**
  * Botão "Sair" — encerra a sessão do painel.
@@ -28,7 +43,7 @@ export interface LogoutButtonProps {
  *  4. redireciona para /login com `replace`, para o botão "voltar" do
  *     navegador não devolver à área protegida já deslogada.
  */
-export function LogoutButton({ className, onLogout }: LogoutButtonProps) {
+export function LogoutButton({ className, onLogout, variant = 'default' }: LogoutButtonProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const logout = useAuthStore((state) => state.logout);
@@ -46,8 +61,8 @@ export function LogoutButton({ className, onLogout }: LogoutButtonProps) {
       type="button"
       onClick={handleLogout}
       className={cn(
-        'flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-stone-600',
-        'transition-colors hover:bg-red-50 hover:text-red-700',
+        'flex items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors',
+        variantClasses[variant],
         className,
       )}
     >

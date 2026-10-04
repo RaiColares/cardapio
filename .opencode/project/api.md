@@ -35,15 +35,18 @@ por engano de fora da lista. Espelha o frontend, onde `/admin/*`,
 | Papel | Acesso |
 |-------|--------|
 | `ADMIN` | Total (inclusive gestão de equipe e settings) |
-| `MANAGER` | Total nas rotas operacionais; **sem** gestão de equipe |
+| `MANAGER` | Total nas rotas operacionais; **sem** gestão de credenciais — pode **listar** `GET /users` (apenas `WAITER`/`KITCHEN`) para vincular garçons às mesas |
 | `WAITER` | Operação no seu escopo: mesas sem vínculo ou vinculadas a ele; pedidos, comandas e pagamentos |
 | `KITCHEN` | Operação: fila de pedidos (global) e transições de preparo; mesas apenas sem vínculo |
 
-**Exceção explícita:** a gestão de equipe (`/users` CRUD) NÃO é rota
-operacional e permanece **ADMIN-only** — o MANAGER não administra
-credenciais de outros gestores. A exceção usa `authorizeAdminOnly()`,
-que ignora o bypass dos papéis elevados, deixando a decisão explícita e
-auditável no código.
+**Exceção explícita:** o CRUD de equipe (`/users`, exceto a listagem
+`GET /users` e o perfil próprio `GET /users/me`) NÃO é rota operacional e
+permanece **ADMIN-only** — o MANAGER não administra credenciais de outros
+gestores. A exceção usa
+`authorizeAdminOnly()`, que ignora o bypass dos papéis elevados, deixando
+a decisão explícita e auditável no código. A única leitura liberada ao
+MANAGER é `GET /users` (FASE 23), com a resposta filtrada no service para
+`WAITER`/`KITCHEN`.
 
 
 ## Estabelecimentos (SaaS — FASE 18)
@@ -95,16 +98,20 @@ acessível a qualquer role autenticada.
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | GET | `/users/me` | Perfil do usuário autenticado (qualquer role) |
-| GET | `/users` | Lista usuários do **mesmo** estabelecimento (ADMIN) |
+| GET | `/users` | Lista usuários do **mesmo** estabelecimento (ADMIN; MANAGER vê só `WAITER`/`KITCHEN`) |
 | GET | `/users/:id` | Detalhe de membro da equipe (ADMIN, tenant do token) |
 | POST | `/users` | Cria membro (ADMIN) — `name`, `email`, `password`, `role`, `phone?` |
 | PUT/PATCH | `/users/:id` | Atualiza membro (ADMIN) — `name?`, `email?`, `password?`, `role?`, `phone?`, `active?` |
 | DELETE | `/users/:id` | Remove membro (ADMIN) |
 
-> Estas rotas usam `authorizeAdminOnly()` — **exceção explícita** ao acesso
-> irrestrito de ADMIN/MANAGER (ver "RBAC — papéis elevados"). O MANAGER
-> recebe `403 FORBIDDEN` aqui por decisão de segurança: gerir credenciais
-> da equipe não é operação.
+> `GET /users/me` é aberta a qualquer role. `GET /users` aceita `ADMIN` e
+> `MANAGER` (FASE 23): o MANAGER precisa listar a equipe operacional para
+> vincular garçons às mesas, mas a resposta é **filtrada no service** para
+> `role in (WAITER, KITCHEN)` — o MANAGER continua sem ver credenciais de
+> ADMIN/MANAGER. As demais rotas usam `authorizeAdminOnly()` — **exceção
+> explícita** ao acesso irrestrito de ADMIN/MANAGER (ver "RBAC — papéis
+> elevados"). O MANAGER recebe `403 FORBIDDEN` nelas por decisão de
+> segurança: gerir credenciais da equipe não é operação.
 
 
 Regras:
@@ -173,6 +180,14 @@ Erros: `VALIDATION_ERROR`, `AREA_NOT_FOUND`, `AREA_HAS_TABLES`, `FORBIDDEN`.
   (`set`). Cada usuário precisa ser `WAITER`, **ativo** e do mesmo
   establishment — senão `400 INVALID_WAITER`.
 - As respostas de mesa incluem `waiters: [{ id, name }]`.
+- As respostas de mesa incluem `activeSessionId: string | null` — o id da
+  `TableSession` com status `OPEN` vinculada à mesa (a mais recente;
+  `null` quando não há comanda aberta). Permite ao frontend abrir a gaveta
+  da conta e fechar mesas "travadas" **sem consumo**, situação em que a
+  mesa fica `OCCUPIED` sem pedidos e não haveria `orders[0].tableSession`.
+  O array interno `tableSessions` nunca é exposto (serializado para
+  `activeSessionId` em `GET /tables`, `GET /tables/:id`, `POST /tables`,
+  `PATCH /tables/:id` e `PUT /tables/:id/waiters`).
 - `GET /tables` aceita `?areaId=`; `establishmentId` sempre do JWT, então
   um garçom de A jamais vê as mesas de B.
 

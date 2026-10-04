@@ -69,8 +69,11 @@ export function AdminLayout() {
   const visibleItems = navItems.filter((item) => (role ? item.roles.includes(role) : false));
 
   const nav = (
-    <div className="flex min-h-full flex-col gap-4">
-      <nav className="flex flex-col gap-1" aria-label="Navegação administrativa">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <nav
+        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
+        aria-label="Navegação administrativa"
+      >
         {visibleItems.map((item) => {
           const Icon = item.icon;
 
@@ -117,7 +120,7 @@ export function AdminLayout() {
   return (
     <div className="flex min-h-dvh bg-sand-50">
       {/* Sidebar desktop */}
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-stone-200 bg-white p-4 lg:flex">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden border-r border-stone-200 bg-white p-4 lg:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary-700 text-white">
             <Waves className="size-5" aria-hidden="true" />

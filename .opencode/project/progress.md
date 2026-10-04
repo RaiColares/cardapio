@@ -350,18 +350,24 @@ devolvidos pelo backend).
 - `types/domain.ts`: `ApiTable.waiters`, `SessionBill` (ajustes),
   `PaymentRemovalResult`, `SessionAdjustmentsInput`.
 
-### Limitações / necessidades de backend (a comunicar ao project-manager)
+### Limitações de backend (RESOLVIDAS — Fase 23.1 backend)
 
-1. **`GET /users` é ADMIN-only**: o MANAGER não consegue listar a equipa para
-   escolher garçons. Mitigação atual: para MANAGER a lista é derivada dos
-   garçons já vinculados em `GET /tables`. Solução desejada: permitir leitura
-   de utilizadores (role WAITER) a MANAGER, ou expor `GET /users?role=WAITER`.
-2. **Sessão por mesa sem pedidos**: o painel do garçom abre a conta a partir de
-   `orders[0].tableSession.id`. Uma mesa OCCUPIED criada por leitura de QR sem
-   qualquer pedido não tem sessão acessível pelo frontend (não existe rota
-   privada "sessão por mesa"). O `BillDrawer` já fecha a R$ 0,00, mas é
-   necessário um meio de a abrir. Solução desejada: `GET /tables/:id/active-session`
-   ou incluir `activeSessionId` em `GET /tables`.
+1. ~~**`GET /users` é ADMIN-only**~~ → **RESOLVIDO**: `GET /users` agora aceita
+   `ADMIN` e `MANAGER`; a resposta do MANAGER é filtrada no service para
+   `WAITER`/`KITCHEN`. O CRUD continua ADMIN-only.
+2. ~~**Sessão por mesa sem pedidos**~~ → **RESOLVIDO**: as respostas de mesa
+   passaram a incluir `activeSessionId` (id da `TableSession` `OPEN`), o que
+   permite abrir a conta e fechar mesas sem consumo.
+
+### Validação (Fase 23.1 backend)
+
+- `npm run typecheck` e `npm run build` limpos.
+- Runtime (13/13 checks): ADMIN `GET /users` 200 (vê ADMIN/MANAGER/WAITER/
+  KITCHEN); WAITER `GET /users` 403; MANAGER `GET /users` 200 vendo apenas
+  WAITER/KITCHEN (não vê ADMIN/MANAGER); MANAGER `POST /users` 403;
+  `GET /tables` e `GET /tables/:id` com `activeSessionId` (null ou uuid;
+  4 mesas com sessão aberta no seed) e sem vazar `tableSessions`. Usuário
+  MANAGER temporário criado e removido na validação (dev DB restaurada).
 
 ### Validação
 
@@ -370,3 +376,65 @@ devolvidos pelo backend).
 - `vite preview` → 200 e `<title>Cardápio Digital</title>`.
 - Dev server Vite transforma com 200 `main.tsx`, `BillDrawer.tsx`,
   `AdminTablesPage.tsx` e `CustomerPanel.tsx`.
+
+### Integração final (Fase 23.2 frontend)
+
+Consome as correções 23.1 do backend:
+
+- **`types/domain.ts`**: `ApiTable.activeSessionId?: string | null`.
+- **Painel do salão** (`pages/waiter/Dashboard.tsx`): `openBillForTable`
+  prioriza `table.activeSessionId` para abrir o `BillDrawer` sem consultar
+  pedidos — destrava mesas OCCUPIED sem consumo (fecho a R$ 0,00). O
+  fallback por `listOrders({ tableId })` mantém-se para payloads sem sessão.
+  `TableCard` fica clicável quando há `activeSessionId` mesmo com status
+  `AVAILABLE`.
+- **`AdminTablesPage.tsx`**: removida a restrição/fallback do MANAGER; a
+  query `['team']` (`GET /users`) é habilitada para ADMIN e MANAGER com o
+  modal aberto, e o seletor de garçons usa a resposta da API (WAITER ativos).
+  Adicionado estado de erro da query.
+
+### Validação (Fase 23.2 frontend)
+
+- `npm run typecheck` (`tsc --noEmit`) limpo.
+- `npm run build` (`tsc --noEmit && vite build`) limpo.
+- Dev server Vite transforma com 200 `domain.ts`, `Dashboard.tsx` e
+  `AdminTablesPage.tsx`.
+
+## Fase 23.3 — Frontend: Logout persistente e nos painéis operacionais
+
+### Problema
+
+- No painel ADMIN/MANAGER o botão "Sair" (base da sidebar) desaparecia
+  porque o wrapper de navegação usava `min-h-full`: como o logo é irmão
+  anterior dentro de uma `aside` com `h-dvh`, a soma ultrapassava 100% da
+  altura e empurrava o rodapé para fora da área visível (sem scroll).
+- Garçom e Cozinha não tinham forma de encerrar a sessão fora da tela
+  principal.
+
+### Entregas
+
+- **`components/ui/LogoutButton.tsx`**: novo prop `variant`
+  (`'default' | 'onDark'`). Dimensão/cor passam a viver no variant (o `cn`
+  não faz merge de utilitários, então a largura/altura não podem ficar no
+  base): `default` = sidebar clara (`h-11 w-full`); `onDark` = cabeçalho
+  escuro (`h-10 w-auto shrink-0 text-white/90 hover:bg-white/10`).
+  Lógica de logout reutilizada (limpa cache do Query, intents, auth e
+  redireciona para `/login` com `replace`).
+- **`layouts/AdminLayout.tsx`**: wrapper de navegação trocado de
+  `min-h-full` para `flex min-h-0 flex-1 flex-col`; `<nav>` com
+  `min-h-0 flex-1 overflow-y-auto`; `aside` com `overflow-hidden`. O
+  rodapé (`mt-auto`) fica fixo na base e visível em qualquer rota, e a
+  navegação rola se faltar altura.
+- **`layouts/WaiterLayout.tsx`** e **`layouts/KitchenLayout.tsx`**:
+  `LogoutButton variant="onDark"` no cabeçalho. Na Cozinha o badge
+  "Painel operacional" é `hidden sm:inline-block` e o botão usa
+  `ml-auto sm:ml-0` para manter o alinhamento à direita no mobile.
+
+### Validação (Fase 23.3 frontend)
+
+- `npm run typecheck` (`tsc --noEmit`) limpo.
+- `npm run build` (`tsc --noEmit && vite build`) limpo (1872 módulos).
+- Dev server Vite transforma com 200 `AdminLayout.tsx`, `WaiterLayout.tsx`,
+  `KitchenLayout.tsx` e `LogoutButton.tsx`.
+- CSS gerado contém `hover\:bg-white/10`, `sm\:ml-0`, `sm\:inline-block` e
+  `text-white/90`.

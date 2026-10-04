@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { TableSessionStatus } from '@prisma/client';
+
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
 import {
@@ -47,6 +49,45 @@ const waitersSelect = {
 } as const;
 
 /**
+ * FASE 23 — Sessão aberta da mesa.
+ *
+ * Uma mesa pode ter no máximo uma comanda OPEN por vez. O frontend usa o
+ * `activeSessionId` para abrir a gaveta da conta e fechar mesas mesmo sem
+ * consumo (o vínculo é com a sessão, não com a existência de pedidos).
+ */
+const activeSessionSelect = {
+  tableSessions: {
+    where: { status: TableSessionStatus.OPEN },
+    select: { id: true },
+    orderBy: { openedAt: 'desc' },
+    take: 1,
+  },
+} as const;
+
+/**
+ * Select padrão de detalhe da mesa: campos públicos + garçons vinculados +
+ * sessão aberta + área. A serialização troca o array `tableSessions` por
+ * `activeSessionId` (ver `toTableResponse`).
+ */
+const tableDetailSelect = {
+  ...tableSelect,
+  ...waitersSelect,
+  ...activeSessionSelect,
+  area: { select: { id: true, name: true } },
+} as const;
+
+/**
+ * Converte a linha do Prisma para o contrato da API, substituindo
+ * `tableSessions: [{ id }]` por `activeSessionId: string | null`.
+ */
+function toTableResponse<T extends { tableSessions: { id: string }[] }>(
+  table: T,
+): Omit<T, 'tableSessions'> & { activeSessionId: string | null } {
+  const { tableSessions, ...rest } = table;
+  return { ...rest, activeSessionId: tableSessions[0]?.id ?? null };
+}
+
+/**
  * Lista mesas do estabelecimento autenticado (opcional por área).
  *
  * FASE 23: quando `viewer` é informado, aplica a visibilidade do salão
@@ -57,19 +98,17 @@ export async function listTables(
   areaId?: string,
   viewer?: AuthContext,
 ) {
-  return prisma.table.findMany({
+  const tables = await prisma.table.findMany({
     where: {
       establishmentId,
       ...(areaId ? { areaId } : {}),
       ...(viewer ? tableVisibilityWhere(viewer) : {}),
     },
-    select: {
-      ...tableSelect,
-      ...waitersSelect,
-      area: { select: { id: true, name: true } },
-    },
+    select: tableDetailSelect,
     orderBy: [{ number: 'asc' }],
   });
+
+  return tables.map(toTableResponse);
 }
 
 /**
@@ -88,18 +127,14 @@ export async function getTableById(
       establishmentId,
       ...(viewer ? tableVisibilityWhere(viewer) : {}),
     },
-    select: {
-      ...tableSelect,
-      ...waitersSelect,
-      area: { select: { id: true, name: true } },
-    },
+    select: tableDetailSelect,
   });
 
   if (!table) {
     throw new AppError(404, 'TABLE_NOT_FOUND', 'Mesa não encontrada.');
   }
 
-  return table;
+  return toTableResponse(table);
 }
 
 /** Valida que a área existe e pertence ao mesmo estabelecimento (tenant). */
@@ -149,14 +184,10 @@ export async function createTable(input: CreateTableInput, establishmentId: stri
       qrCode: randomUUID(),
       active: input.active ?? true,
     },
-    select: {
-      ...tableSelect,
-      ...waitersSelect,
-      area: { select: { id: true, name: true } },
-    },
+    select: tableDetailSelect,
   });
 
-  return table;
+  return toTableResponse(table);
 }
 
 /** Atualiza uma mesa (somente se pertencer ao estabelecimento autenticado). */
@@ -175,7 +206,7 @@ export async function updateTable(
     await ensureUniqueTableNumber(input.number, establishmentId, id);
   }
 
-  return prisma.table.update({
+  const table = await prisma.table.update({
     where: { id },
     data: {
       number: input.number,
@@ -184,12 +215,10 @@ export async function updateTable(
       areaId: input.areaId,
       active: input.active,
     },
-    select: {
-      ...tableSelect,
-      ...waitersSelect,
-      area: { select: { id: true, name: true } },
-    },
+    select: tableDetailSelect,
   });
+
+  return toTableResponse(table);
 }
 
 /**
@@ -256,15 +285,13 @@ export async function assignTableWaiters(
     }
   }
 
-  return prisma.table.update({
+  const table = await prisma.table.update({
     where: { id },
     data: {
       waiters: { set: uniqueIds.map((userId) => ({ id: userId })) },
     },
-    select: {
-      ...tableSelect,
-      ...waitersSelect,
-      area: { select: { id: true, name: true } },
-    },
+    select: tableDetailSelect,
   });
+
+  return toTableResponse(table);
 }

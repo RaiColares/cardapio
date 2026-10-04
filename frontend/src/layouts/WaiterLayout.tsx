@@ -1,8 +1,12 @@
 import { Outlet } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 
+import { LogoutButton } from '../components/ui/LogoutButton.js';
+
 /**
  * Shell do garçom: mobile/tablet, mapa de mesas e atendimento.
+ * O cabeçalho concentra o "Sair" para que a sessão seja encerrável de
+ * qualquer tela (aparelhos compartilhados no salão).
  */
 export function WaiterLayout() {
   return (
@@ -13,6 +17,7 @@ export function WaiterLayout() {
         <span className="ml-auto rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
           Mesas
         </span>
+        <LogoutButton variant="onDark" />
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 p-4">
         <Outlet />

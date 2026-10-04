@@ -49,10 +49,19 @@ export async function getMe(userId: string) {
  *
  * O establishmentId vem do token (req.user), nunca do corpo da
  * requisição: um usuário de A jamais enxerga usuários de B.
+ *
+ * FASE 23: o MANAGER pode listar apenas os papéis operacionais
+ * (WAITER/KITCHEN), necessários para vincular garçons às mesas. O ADMIN
+ * (e qualquer outro chamador) recebe a equipe completa.
  */
-export async function listUsers(establishmentId: string) {
+export async function listUsers(establishmentId: string, viewerRole?: UserRole) {
+  const scopeWhere =
+    viewerRole === UserRole.MANAGER
+      ? { role: { in: [UserRole.WAITER, UserRole.KITCHEN] } }
+      : {};
+
   return prisma.user.findMany({
-    where: { establishmentId },
+    where: { establishmentId, ...scopeWhere },
     select: userSelect,
     orderBy: { createdAt: 'asc' },
   });

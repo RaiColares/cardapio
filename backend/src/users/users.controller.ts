@@ -38,7 +38,11 @@ export async function meController(
 
 /**
  * GET /api/v1/users
- * Lista os usuários do MESMO estabelecimento (ADMIN, multi-tenancy).
+ * Lista os usuários do MESMO estabelecimento (ADMIN/MANAGER).
+ *
+ * ADMIN vê toda a equipe; MANAGER vê apenas WAITER/KITCHEN (ver service),
+ * o suficiente para vincular garçons às mesas sem expor credenciais de
+ * outros gestores.
  */
 export async function listUsersController(
   req: Request,
@@ -47,7 +51,7 @@ export async function listUsersController(
 ): Promise<void> {
   try {
     const user = requireUser(req);
-    const users = await listUsers(user.establishmentId);
+    const users = await listUsers(user.establishmentId, user.role);
     res.json({ success: true, data: users });
   } catch (error) {
     next(error);

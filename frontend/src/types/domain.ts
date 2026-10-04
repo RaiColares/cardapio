@@ -163,6 +163,11 @@ export interface ApiTable {
   area: { id: string; name: string };
   /** FASE 23 — garçons vinculados à mesa (NxN). Vazio/ausente = sem vínculo. */
   waiters?: { id: string; name: string }[];
+  /**
+   * FASE 23 — id da TableSession com status OPEN (null/ausente = sem comanda
+   * aberta). Permite abrir a conta e fechar mesas sem consumo.
+   */
+  activeSessionId?: string | null;
 }
 
 /* ============================================================
