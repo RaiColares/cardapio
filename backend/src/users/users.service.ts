@@ -85,13 +85,34 @@ async function getTeamUserInTenant(id: string, establishmentId: string) {
 }
 
 /**
- * Cria um membro da equipe (ADMIN).
+ * Cria um membro da equipe (ADMIN ou MANAGER).
  *
  * O establishmentId é injetado passivamente pelo token — jamais aceito
  * no body. A role é restrita a MANAGER/WAITER/KITCHEN pelo schema;
  * a senha recebe hash bcrypt antes da persistência.
+ *
+ * FASE 24 — regra de segurança do MANAGER: um gerente NÃO pode criar
+ * gestores (ADMIN/MANAGER). Se tentar, responde 403 FORBIDDEN — segue o
+ * mesmo espírito do `teamRoles` (nenhum fluxo de equipe cria ADMIN).
  */
-export async function createUser(input: CreateUserInput, establishmentId: string) {
+export async function createUser(
+  input: CreateUserInput,
+  establishmentId: string,
+  actorRole: UserRole,
+) {
+  // O gerente só administra a equipe operacional (garçom/cozinha).
+  if (
+    actorRole === UserRole.MANAGER &&
+    input.role !== UserRole.WAITER &&
+    input.role !== UserRole.KITCHEN
+  ) {
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      'O gerente só pode criar usuários com os papéis WAITER ou KITCHEN.',
+    );
+  }
+
   // E-mail é globalmente único na plataforma (evita duplicidade entre tenants).
   const emailInUse = await prisma.user.findUnique({
     where: { email: input.email },
@@ -133,21 +154,49 @@ export async function getUserById(id: string, establishmentId: string) {
 }
 
 /**
- * Atualiza um membro da equipe.
+ * Atualiza um membro da equipe (ADMIN ou MANAGER).
  *
  * Usuários ADMIN (proprietário) não podem ser alterados por este fluxo:
  * isso protege o onboarding e impede que o único ADMIN seja rebaixado,
  * desativado ou tenha o e-mail trocado (evita "lockout" do restaurante).
+ *
+ * FASE 24 — regra de segurança do MANAGER: o gerente só gerencia a equipe
+ * operacional. Ele não pode editar usuários ADMIN/MANAGER nem promover
+ * alguém para ADMIN/MANAGER (403 FORBIDDEN, mesma proteção de criação).
  */
 export async function updateUser(
   id: string,
   input: UpdateUserInput,
-  actor: { userId: string; establishmentId: string },
+  actor: { userId: string; establishmentId: string; role: UserRole },
 ) {
   const target = await getTeamUserInTenant(id, actor.establishmentId);
 
   if (target.role === UserRole.ADMIN) {
     throw new AppError(400, 'CANNOT_MODIFY_ADMIN', 'O usuário administrador não pode ser modificado.');
+  }
+
+  if (actor.role === UserRole.MANAGER) {
+    // Só pode atuar sobre a equipe operacional (WAITER/KITCHEN).
+    if (target.role !== UserRole.WAITER && target.role !== UserRole.KITCHEN) {
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'O gerente só pode editar usuários com os papéis WAITER ou KITCHEN.',
+      );
+    }
+
+    // E nem pode promover ninguém a gestor (ADMIN/MANAGER).
+    if (
+      input.role !== undefined &&
+      input.role !== UserRole.WAITER &&
+      input.role !== UserRole.KITCHEN
+    ) {
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'O gerente não pode criar ou alterar usuários para ADMIN ou MANAGER.',
+      );
+    }
   }
 
   // E-mail alterado: confere unicidade global antes de atualizar.

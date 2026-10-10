@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   BarChart3,
+  ChefHat,
   ClipboardList,
+  ConciergeBell,
   LayoutDashboard,
   LayoutGrid,
   MapPin,
@@ -30,7 +32,8 @@ interface NavItem {
   roles: Role[];
 }
 
-const navItems: NavItem[] = [
+/** Gestão do estabelecimento (configuração e catálogo). */
+const managementItems: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin/orders', label: 'Pedidos', icon: ClipboardList, end: false, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin/reports', label: 'Relatórios', icon: BarChart3, end: false, roles: ['ADMIN', 'MANAGER'] },
@@ -38,9 +41,20 @@ const navItems: NavItem[] = [
   { to: '/admin/categories', label: 'Categorias', icon: Tags, end: false, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin/areas', label: 'Áreas', icon: MapPin, end: false, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin/tables', label: 'Mesas', icon: LayoutGrid, end: false, roles: ['ADMIN', 'MANAGER'] },
-  // Equipe é exclusiva de ADMIN; Configurações é ADMIN/MANAGER.
-  { to: '/admin/team', label: 'Equipe', icon: Users, end: false, roles: ['ADMIN'] },
+  // Equipe: ADMIN gerencia tudo; MANAGER gere a equipe operacional
+  // (WAITER/KITCHEN) — FASE 24. O select de papel é filtrado na página Team.
+  { to: '/admin/team', label: 'Equipe', icon: Users, end: false, roles: ['ADMIN', 'MANAGER'] },
   { to: '/admin/settings', label: 'Configurações', icon: Settings, end: false, roles: ['ADMIN', 'MANAGER'] },
+];
+
+/**
+ * Operação (FASE 24): atalhos para o painel do garçom e a cozinha, sem
+ * precisar de trocar de conta. Visíveis para MANAGER/ADMIN — os mesmos
+ * papéis liberados pelas rotas /waiter e /kitchen.
+ */
+const operationItems: NavItem[] = [
+  { to: '/waiter', label: 'Salão', icon: ConciergeBell, end: true, roles: ['ADMIN', 'MANAGER'] },
+  { to: '/kitchen', label: 'Cozinha', icon: ChefHat, end: true, roles: ['ADMIN', 'MANAGER'] },
 ];
 
 /** Rótulo legível do papel (exibido no rodapé do menu). */
@@ -54,8 +68,9 @@ const roleLabels: Record<Role, string> = {
 /**
  * Painel administrativo: sidebar em desktop (>lg), drawer no mobile.
  * Os itens do menu são filtrados pela role do usuário logado — o mesmo
- * critério de autorização do backend (ADMIN gerencia tudo; MANAGER não
- * vê "Equipe", que continua acessível apenas ao ADMIN).
+ * critério de autorização do backend (ADMIN gerencia tudo; MANAGER vê
+ * Equipe, mas o serviço restringe a resposta e a criação/edição a
+ * WAITER/KITCHEN — FASE 24).
  *
  * O rodapé do menu identifica o usuário logado e concentra a ação "Sair".
  * O mesmo bloco é reutilizado na sidebar de desktop e no drawer mobile,
@@ -66,7 +81,36 @@ export function AdminLayout() {
   const user = useAuthStore((s) => s.user);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const visibleItems = navItems.filter((item) => (role ? item.roles.includes(role) : false));
+  const visibleManagement = managementItems.filter((item) =>
+    role ? item.roles.includes(role) : false,
+  );
+  const visibleOperation = operationItems.filter((item) =>
+    role ? item.roles.includes(role) : false,
+  );
+
+  const renderItem = (item: NavItem) => {
+    const Icon = item.icon;
+
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.end}
+        onClick={() => setMobileNavOpen(false)}
+        className={({ isActive }) =>
+          cn(
+            'flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors',
+            isActive
+              ? 'bg-primary-700 text-white'
+              : 'text-stone-600 hover:bg-sand-100 hover:text-stone-900',
+          )
+        }
+      >
+        <Icon className="size-5 shrink-0" aria-hidden="true" />
+        {item.label}
+      </NavLink>
+    );
+  };
 
   const nav = (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -74,29 +118,14 @@ export function AdminLayout() {
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto"
         aria-label="Navegação administrativa"
       >
-        {visibleItems.map((item) => {
-          const Icon = item.icon;
+        {visibleManagement.map(renderItem)}
 
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => setMobileNavOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors',
-                  isActive
-                    ? 'bg-primary-700 text-white'
-                    : 'text-stone-600 hover:bg-sand-100 hover:text-stone-900',
-                )
-              }
-            >
-              <Icon className="size-5 shrink-0" aria-hidden="true" />
-              {item.label}
-            </NavLink>
-          );
-        })}
+        {visibleOperation.length > 0 && (
+          <p className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-stone-400">
+            Operação
+          </p>
+        )}
+        {visibleOperation.map(renderItem)}
       </nav>
 
       {/* Rodapé: usuário logado + sair */}

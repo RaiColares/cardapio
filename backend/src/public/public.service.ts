@@ -44,6 +44,9 @@ export async function getPublicMenu(slug: string) {
       state: true,
       serviceFeeEnabled: true,
       serviceFeeRate: true,
+      // FASE 24 — métodos de pagamento aceites (CASH | CREDIT_CARD | DEBIT_CARD | PIX). O
+      // frontend público filtra as opções do cliente ao pedir a conta.
+      acceptedPaymentMethods: true,
     },
   });
 

@@ -75,7 +75,7 @@ export const sessionTokenParamsSchema = z.object({
 });
 
 /** Métodos de pagamento aceitos (espelha o enum PaymentMethod do Prisma). */
-export const PAYMENT_METHOD_VALUES = ['CASH', 'CARD', 'PIX'] as const;
+export const PAYMENT_METHOD_VALUES = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'] as const;
 
 /**
  * Valor monetário de troco solicitado: positivo e com no máximo 2 casas
@@ -95,7 +95,7 @@ const changeRequestedSchema = z
 /**
  * Body de POST /public/table-sessions/:sessionToken/request-bill.
  * Intenção de pagamento informada pelo cliente ao pedir a conta:
- * - paymentMethodIntent: CASH | CARD | PIX (como será pago);
+ * - paymentMethodIntent: CASH | CREDIT_CARD | DEBIT_CARD | PIX (como será pago);
  * - changeRequested: troco desejado (relevante para CASH).
  * Ambos opcionais; null limpa uma intenção anterior.
  */

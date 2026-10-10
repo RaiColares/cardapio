@@ -25,6 +25,8 @@ const settingsSelect = {
   logoUrl: true,
   serviceFeeEnabled: true,
   serviceFeeRate: true,
+  // FASE 24 — métodos de pagamento aceites pelo estabelecimento.
+  acceptedPaymentMethods: true,
   status: true,
   createdAt: true,
   updatedAt: true,
@@ -163,6 +165,7 @@ export async function updateEstablishmentSettings(
       logoUrl: input.logoUrl,
       serviceFeeEnabled: input.serviceFeeEnabled,
       serviceFeeRate: input.serviceFeeRate,
+      acceptedPaymentMethods: input.acceptedPaymentMethods,
     },
     select: settingsSelect,
   });

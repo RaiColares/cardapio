@@ -44,7 +44,7 @@ const paymentSchema = z.object({
     .min(1, 'Informe o valor.')
     .refine((value) => Number(value) > 0, 'Valor deve ser maior que zero.')
     .refine((value) => Number(value) <= 100000, 'Valor acima do limite.'),
-  method: z.enum(['CASH', 'CARD', 'PIX'] as const),
+  method: z.enum(['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'] as const),
   status: z.enum(['PAID', 'PENDING'] as const),
 });
 
@@ -88,7 +88,8 @@ function amountToField(value?: number | null): string {
 
 const methodLabel: Record<PaymentMethod, string> = {
   CASH: 'Dinheiro',
-  CARD: 'Cartão',
+  CREDIT_CARD: 'Cartão de Crédito',
+  DEBIT_CARD: 'Cartão de Débito',
   PIX: 'PIX',
 };
 
@@ -275,6 +276,7 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
         onClose();
       }}
       placement="right"
+      size="lg"
       title={`Conta · ${title}`}
       footer={
         bill && (
@@ -318,7 +320,7 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
         <div className="space-y-5">
           {/* Resumo financeiro */}
           <section aria-label="Resumo da conta">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               <SummaryCell label="Pedidos" value={String(summary?.ordersCount ?? 0)} />
               <SummaryCell label="Itens" value={String(summary?.itemsCount ?? 0)} />
               <SummaryCell label="Subtotal" value={formatBRL(summary?.subtotal ?? 0)} />
@@ -382,7 +384,7 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
                   )(event);
                 }}
               >
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <CurrencyInput
                     id="adjustment-discount"
                     label="Desconto"
@@ -558,13 +560,14 @@ export function BillDrawer({ sessionId, title, onClose }: BillDrawerProps) {
                 error={paymentForm.formState.errors.amount?.message}
                 placeholder="0,00"
               />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Select
                   label="Método"
                   id="payment-method"
                   options={[
                     { value: 'CASH', label: 'Dinheiro' },
-                    { value: 'CARD', label: 'Cartão' },
+                    { value: 'CREDIT_CARD', label: 'Cartão de Crédito' },
+                    { value: 'DEBIT_CARD', label: 'Cartão de Débito' },
                     { value: 'PIX', label: 'PIX' },
                   ]}
                   {...paymentForm.register('method')}

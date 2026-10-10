@@ -62,7 +62,7 @@ export async function getSessionOrders(
 
 /** Body opcional de request-bill (FASE 22): intenção de pagamento do cliente. */
 export interface RequestBillInput {
-  paymentMethodIntent?: 'CASH' | 'CARD' | 'PIX' | null;
+  paymentMethodIntent?: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX' | null;
   changeRequested?: number | null;
 }
 

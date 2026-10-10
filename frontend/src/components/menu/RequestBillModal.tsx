@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Banknote, CreditCard, QrCode } from 'lucide-react';
 
@@ -20,7 +20,19 @@ interface RequestBillModalProps {
   pending: boolean;
   onClose: () => void;
   onConfirm: (payload: RequestBillPayload) => void;
+  /**
+   * FASE 24 — métodos de pagamento aceites pelo estabelecimento
+   * (CASH | CREDIT_CARD | DEBIT_CARD | PIX). Ausente/indefinido = mostra todas as opções
+   * (comportamento anterior).
+   */
+  acceptedMethods?: PaymentMethod[];
 }
+
+/**
+ * Métodos aceites por padrão quando a API não informa
+ * (ou o contrato antigo ainda não expõe o campo).
+ */
+const DEFAULT_ACCEPTED: PaymentMethod[] = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'];
 
 /** Opções apresentadas ao cliente na solicitação da conta (FASE 22). */
 type IntentOption = 'PIX' | 'CARD_CREDIT' | 'CARD_DEBIT' | 'CASH';
@@ -39,32 +51,66 @@ const optionIcon: Record<IntentOption, typeof QrCode> = {
   CASH: Banknote,
 };
 
-/**
- * Modal de solicitação de conta: pergunta a intenção de pagamento.
- *
- * Como o backend aceita CASH | CARD | PIX, "Cartão de Crédito" e
- * "Cartão de Débito" são enviados como CARD (a forma exata é definida
- * com o garçom no fechamento). Para Dinheiro, o cliente pode informar
- * "Precisa de troco para quanto?" (opcional).
- */
-export function RequestBillModal({
+  /**
+   * FASE 24 — a opção do cliente é exibida somente se o método ativo
+   * correspondente existir nas configurações do estabelecimento:
+   * PIX → PIX, Dinheiro → CASH, Cartão de Crédito → CREDIT_CARD,
+   * Cartão de Débito → DEBIT_CARD.
+   */
+  function isAccepted(option: IntentOption, accepted: PaymentMethod[]): boolean {
+    if (option === 'CASH') return accepted.includes('CASH');
+    if (option === 'PIX') return accepted.includes('PIX');
+    if (option === 'CARD_CREDIT') return accepted.includes('CREDIT_CARD');
+    if (option === 'CARD_DEBIT') return accepted.includes('DEBIT_CARD');
+    return false;
+  }
+
+  /**
+   * Modal de solicitação de conta: pergunta a intenção de pagamento.
+   *
+   * O backend agora distingue CREDIT_CARD e DEBIT_CARD. Enviamos a intenção
+   * exata selecionada pelo cliente (Crédito → CREDIT_CARD, Débito → DEBIT_CARD,
+   * PIX → PIX, Dinheiro → CASH). Para Dinheiro, o cliente pode informar
+   * "Precisa de troco para quanto?" (opcional).
+   */
+  export function RequestBillModal({
   open,
   pending,
   onClose,
   onConfirm,
+  acceptedMethods,
 }: RequestBillModalProps) {
-  const [option, setOption] = useState<IntentOption>('PIX');
+  const accepted = acceptedMethods ?? DEFAULT_ACCEPTED;
+
+  // FASE 24 — apenas os métodos ativos do estabelecimento aparecem ao cliente.
+  const availableOptions = useMemo(
+    () => OPTIONS.filter((option) => isAccepted(option.value, accepted)),
+    [accepted],
+  );
+
+  const [option, setOption] = useState<IntentOption>(availableOptions[0]?.value ?? 'PIX');
   const [change, setChange] = useState('');
 
-  // Sincroniza o estado ao abrir para nunca exibir resíduo de outra sessão.
+  // Sincroniza o estado ao abrir para nunca exibir resíduo de outra sessão
+  // e para nunca deixar selecionada uma opção que deixou de ser aceite.
+  useEffect(() => {
+    const first = availableOptions[0];
+    setOption((current) =>
+      current && isAccepted(current, accepted) ? current : (first?.value ?? 'PIX'),
+    );
+  }, [open, availableOptions, accepted]);
+
   useEffect(() => {
     if (open) {
-      setOption('PIX');
       setChange('');
     }
   }, [open]);
 
   function handleConfirm() {
+    if (option === 'PIX') {
+      onConfirm({ paymentMethodIntent: 'PIX', changeRequested: null });
+      return;
+    }
     if (option === 'CASH') {
       onConfirm({
         paymentMethodIntent: 'CASH',
@@ -72,7 +118,14 @@ export function RequestBillModal({
       });
       return;
     }
-    onConfirm({ paymentMethodIntent: 'CARD', changeRequested: null });
+    if (option === 'CARD_CREDIT') {
+      onConfirm({ paymentMethodIntent: 'CREDIT_CARD', changeRequested: null });
+      return;
+    }
+    if (option === 'CARD_DEBIT') {
+      onConfirm({ paymentMethodIntent: 'DEBIT_CARD', changeRequested: null });
+      return;
+    }
   }
 
   return (
@@ -87,7 +140,7 @@ export function RequestBillModal({
             size="lg"
             fullWidth
             loading={pending}
-            disabled={pending}
+            disabled={pending || availableOptions.length === 0}
             onClick={handleConfirm}
           >
             {pending ? 'Solicitando conta...' : 'Solicitar conta'}
@@ -104,7 +157,13 @@ export function RequestBillModal({
       <fieldset>
         <legend className="sr-only">Método de pagamento desejado</legend>
         <div className="space-y-2">
-          {OPTIONS.map(({ value, label, description }) => {
+          {availableOptions.length === 0 && (
+            <p className="rounded-xl bg-stone-50 px-3 py-4 text-sm text-stone-500">
+              O estabelecimento não informou métodos de pagamento aceites.
+              Fale com o garçom para combinar a forma de pagamento.
+            </p>
+          )}
+          {availableOptions.map(({ value, label, description }) => {
             const Icon = optionIcon[value];
             const selected = option === value;
             return (

@@ -69,7 +69,8 @@ enum DiscountType {
 
 enum PaymentMethod {
   CASH
-  CARD
+  CREDIT_CARD
+  DEBIT_CARD
   PIX
 }
 
@@ -102,6 +103,12 @@ model Establishment {
   // Taxa de serviço — configuração do estabelecimento (FASE 8)
   serviceFeeEnabled Boolean         @default(false) @map("service_fee_enabled")
   serviceFeeRate    Decimal         @default(0)     @map("service_fee_rate") @db.Decimal(5, 2)
+  // FASE 24 — métodos de pagamento aceites pelo estabelecimento.
+  // Usa String[] (e não enum[]) porque o Prisma não suporta listas de enum
+  // no PostgreSQL; os valores espelham o enum PaymentMethod
+  // (CASH | CREDIT_CARD | DEBIT_CARD | PIX) — crédito e débito são
+  // independentes (FASE 24 refinamento).
+  acceptedPaymentMethods String[]   @default(["CASH", "CREDIT_CARD", "DEBIT_CARD", "PIX"]) @map("accepted_payment_methods")
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 

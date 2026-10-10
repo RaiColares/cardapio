@@ -58,6 +58,24 @@ export const registerEstablishmentSchema = z.object({
 });
 
 /**
+ * FASE 24 — métodos de pagamento aceites pelo estabelecimento.
+ * Espelha o enum PaymentMethod do domínio
+ * (CASH | CREDIT_CARD | DEBIT_CARD | PIX). Lista única, não vazia, com no
+ * máximo os quatro valores existentes. Crédito e débito são independentes.
+ */
+export const acceptedPaymentMethodsSchema = z
+  .array(
+    z.enum(['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'] as const, {
+      error: 'Método de pagamento inválido (use CASH, CREDIT_CARD, DEBIT_CARD ou PIX).',
+    }),
+  )
+  .min(1, 'Informe ao menos um método de pagamento.')
+  .max(4, 'No máximo 4 métodos de pagamento.')
+  .refine((methods) => new Set(methods).size === methods.length, {
+    message: 'Métodos de pagamento duplicados.',
+  });
+
+/**
  * Parcial de configurações do estabelecimento (GET/PUT /establishments/me).
  *
  * Todos os campos são opcionais no PUT (o service ignora `undefined` e
@@ -86,6 +104,8 @@ export const updateEstablishmentSettingsSchema = z.object({
       message: 'A taxa de serviço deve ter no máximo 2 casas decimais.',
     })
     .optional(),
+  // FASE 24 — métodos de pagamento aceites (lista única, CASH|CREDIT_CARD|DEBIT_CARD|PIX).
+  acceptedPaymentMethods: acceptedPaymentMethodsSchema.optional(),
 });
 
 export type RegisterEstablishmentInput = z.infer<typeof registerEstablishmentSchema>;

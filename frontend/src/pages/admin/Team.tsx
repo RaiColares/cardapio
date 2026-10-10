@@ -35,6 +35,14 @@ const ROLE_LABELS: Record<TeamRole, string> = {
   KITCHEN: 'Cozinha',
 };
 
+/**
+ * FASE 24 — o MANAGER só gerencia a equipe operacional (espelha a regra do
+ * service: criar/editar ADMIN/MANAGER responde 403 FORBIDDEN). Por isso o
+ * select de "Papel" oculta "Gerente" para MANAGER, mostrando só Garçom e
+ * Cozinha.
+ */
+const MANAGER_VISIBLE_ROLES = ['WAITER', 'KITCHEN'] as [TeamRole, TeamRole];
+
 const roleBadgeVariant: Record<TeamUser['role'], 'primary' | 'info' | 'success' | 'warning'> = {
   ADMIN: 'primary',
   MANAGER: 'info',
@@ -85,17 +93,27 @@ const emptyForm: TeamFormValues = {
 };
 
 /**
- * Gestão da Equipe (somente ADMIN, conforme autorização do backend).
+ * Gestão da Equipe (ADMIN/MANAGER — FASE 24).
  *
  * Lista GET /users (sempre dentro do tenant), cria/edita via modal e
- * exclui com confirmação. As ações são desabilitadas para a própria linha
- * do usuário logado (id do authStore) e para usuários ADMIN, que o
- * backend protege (CANNOT_MODIFY_ADMIN / CANNOT_DELETE_ADMIN).
+ * exclui com confirmação. O MANAGER vê e edita apenas a equipe operacional
+ * (a API filtra a listagem e o service bloqueia gestores com 403); a
+ * exclusão fica restrita ao ADMIN (DELETE /users/:id é authorizeAdminOnly).
+ * As ações são desabilitadas para a própria linha do usuário logado e para
+ * usuários ADMIN, que o backend protege (CANNOT_MODIFY_ADMIN /
+ * CANNOT_DELETE_ADMIN).
  */
 export function AdminTeamPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const currentUserId = useAuthStore((s) => s.user?.id);
+  const currentRole = useAuthStore((s) => s.role);
+  // O MANAGER não exclui funcionários (DELETE é ADMIN-only no backend).
+  const isManager = currentRole === 'MANAGER';
+  // Papéis exibidos no modal: MANAGER vê apenas Garçom/Cozinha.
+  const selectableRoles: TeamRole[] = isManager
+    ? MANAGER_VISIBLE_ROLES
+    : [...TEAM_ROLES];
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<TeamUser | null>(null);
@@ -118,12 +136,18 @@ export function AdminTeamPage() {
 
   const activeValue = watch('active');
 
+  // Garante que o papel editado/criado esteja entre os que o usuário logado
+  // pode gerenciar (para ADMIN: MANAGER/WAITER/KITCHEN; para MANAGER:
+  // WAITER/KITCHEN). Qualquer outro cai para WAITER (defensivo).
+  const safeRole = (role: TeamUser['role']): TeamRole =>
+    selectableRoles.includes(role as TeamRole) ? (role as TeamRole) : 'WAITER';
+
   useEffect(() => {
     if (modalMode === 'edit' && editing) {
       reset({
         name: editing.name,
         email: editing.email,
-        role: editing.role === 'ADMIN' ? 'WAITER' : editing.role,
+        role: safeRole(editing.role),
         phone: editing.phone ?? '',
         password: '',
         active: editing.active,
@@ -133,6 +157,8 @@ export function AdminTeamPage() {
     if (modalMode === 'create') {
       reset(emptyForm);
     }
+    // selectableRoles é derivado da role do usuário (estável na sessão).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalMode, editing, reset]);
 
   const saveMutation = useMutation({
@@ -305,6 +331,9 @@ export function AdminTeamPage() {
                         >
                           <Pencil className="size-4" aria-hidden="true" />
                         </Button>
+                        {/* Exclusão é ADMIN-only no backend (DELETE /users/:id);
+                            o MANAGER não vê a ação (FASE 24). */}
+                        {!isManager && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -316,6 +345,7 @@ export function AdminTeamPage() {
                         >
                           <Trash2 className="size-4" aria-hidden="true" />
                         </Button>
+                        )}
                       </div>
                     </TD>
                   </TRow>
@@ -378,7 +408,7 @@ export function AdminTeamPage() {
           <Select
             id="team-role"
             label="Papel"
-            options={TEAM_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+            options={selectableRoles.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
             error={errors.role?.message}
             disabled={saving}
             {...register('role')}

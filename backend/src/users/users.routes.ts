@@ -18,16 +18,19 @@ import {
  * - GET /: ADMIN e MANAGER (FASE 23). O MANAGER precisa listar a equipe
  *   operacional (WAITER/KITCHEN) para vincular garçons às mesas; o service
  *   restringe a resposta do MANAGER a esses papéis.
- * - Demais rotas (CRUD da equipe): SOMENTE ADMIN (FASE 18).
+ * - POST / e PUT|PATCH /:id: ADMIN e MANAGER (FASE 24). O MANAGER pode
+ *   gerir a equipe operacional, mas o service bloqueia (403) a criação ou
+ *   rebaixamento para ADMIN/MANAGER — o MANAGER só cria/edita
+ *   WAITER/KITCHEN.
+ * - GET /:id e DELETE /:id: somente ADMIN (gerir credenciais de outros
+ *   gestores continua fora do escopo do MANAGER).
  *
  * EXCEÇÃO DOCUMENTADA à regra dos papéis elevados (ADMIN/MANAGER com
  * acesso irrestrito às rotas OPERACIONAIS): a gestão de equipe NÃO é
- * operacional. O MANAGER não administra credenciais de outros gestores —
- * usa-se `authorizeAdminOnly()`, que ignora o bypass dos papéis elevados.
- * Proteções complementares no service: `teamRoles` nunca cria ADMIN e
- * CANNOT_MODIFY_ADMIN/CANNOT_DELETE_ADMIN protegem o usuário dono.
+ * operacional. O acesso do MANAGER é liberado explicitamente rota a rota
+ * e a RBAC fina (papéis que o MANAGER pode gerir) vive no service.
  *
- * REGRA: o `establishmentId` é sempre injetado a partir do JWT. Um ADMIN
+ * REGRA: o `establishmentId` é sempre injetado a partir do JWT. Um usuário
  * de A jamais lista/altera usuários de B (multi-tenancy).
  */
 export const usersRouter = Router();
@@ -37,14 +40,14 @@ export const usersRouter = Router();
 usersRouter.get('/me', authenticate, meController);
 
 // Listagem da equipe: ADMIN (todos) e MANAGER (apenas WAITER/KITCHEN).
-// Registrada ANTES do `use(authorizeAdminOnly)` para não ser bloqueada.
 usersRouter.get('/', authenticate, authorize('ADMIN', 'MANAGER'), listUsersController);
 
-// CRUD da equipe restrito ao ADMIN — establishmentId sempre do token.
-usersRouter.use(authenticate, authorizeAdminOnly());
+// CRUD da equipe — establishmentId sempre do token (multi-tenancy).
+// Criação/edição: ADMIN e MANAGER (MANAGER restrito a WAITER/KITCHEN no service).
+usersRouter.post('/', authenticate, authorize('ADMIN', 'MANAGER'), createUserController);
+usersRouter.put('/:id', authenticate, authorize('ADMIN', 'MANAGER'), updateUserController);
+usersRouter.patch('/:id', authenticate, authorize('ADMIN', 'MANAGER'), updateUserController);
 
-usersRouter.get('/:id', getUserController);
-usersRouter.post('/', createUserController);
-usersRouter.put('/:id', updateUserController);
-usersRouter.patch('/:id', updateUserController);
-usersRouter.delete('/:id', deleteUserController);
+// Detalhe e exclusão continuam ADMIN-only (gestão de gestores).
+usersRouter.get('/:id', authenticate, authorizeAdminOnly(), getUserController);
+usersRouter.delete('/:id', authenticate, authorizeAdminOnly(), deleteUserController);

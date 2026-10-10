@@ -88,10 +88,11 @@ export async function getUserController(
 
 /**
  * POST /api/v1/users
- * Cria um membro da equipe (ADMIN).
+ * Cria um membro da equipe (ADMIN/MANAGER — FASE 24).
  *
- * O establishmentId é injetado passivamente pelo token do ADMIN — nunca
- * aceito no body (multi-tenancy).
+ * O establishmentId é injetado passivamente pelo token — nunca aceito no
+ * body (multi-tenancy). O service bloqueia com 403 se um MANAGER tentar
+ * criar usuários fora da equipe operacional (ADMIN/MANAGER).
  */
 export async function createUserController(
   req: Request,
@@ -110,7 +111,7 @@ export async function createUserController(
       );
     }
 
-    const created = await createUser(parsed.data, user.establishmentId);
+    const created = await createUser(parsed.data, user.establishmentId, user.role);
     res.status(201).json({ success: true, data: created });
   } catch (error) {
     next(error);
@@ -119,7 +120,7 @@ export async function createUserController(
 
 /**
  * PUT/PATCH /api/v1/users/:id
- * Atualiza um membro da equipe (ADMIN, tenant via JWT).
+ * Atualiza um membro da equipe (ADMIN/MANAGER — FASE 24, tenant via JWT).
  */
 export async function updateUserController(
   req: Request,

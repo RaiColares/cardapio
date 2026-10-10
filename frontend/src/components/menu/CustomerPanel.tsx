@@ -345,6 +345,7 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
         pending={bill.isPending}
         onClose={() => setRequestBillOpen(false)}
         onConfirm={(payload) => bill.mutate(payload)}
+        acceptedMethods={menuEstablishment?.acceptedPaymentMethods}
       />
     </>
   );

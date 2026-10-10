@@ -205,7 +205,7 @@ export function WaiterDashboard() {
                   ({area.tables.length})
                 </span>
               </h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {area.tables.map((table) => (
                   <TableCard
                     key={table.id}
@@ -259,7 +259,7 @@ function QueueSection({
           {emptyLabel}
         </p>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {orders.map((order) => (
             <article
               key={order.id}
@@ -292,13 +292,14 @@ function QueueSection({
                 ))}
               </ul>
 
-              <div className="mt-3 flex items-center justify-between border-t border-stone-100 pt-2">
+              <div className="mt-3 flex flex-col gap-2 border-t border-stone-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm font-semibold text-stone-900">
                   {formatBRL(order.total)}
                 </span>
                 <Button
                   variant="primary"
-                  size="sm"
+                  size="md"
+                  className="w-full sm:w-auto"
                   disabled={busy}
                   loading={busy}
                   onClick={() => onAction(order.id)}
@@ -334,7 +335,7 @@ function TableCard({
       disabled={!clickable || loading}
       aria-label={`Mesa ${table.number}${table.name ? ` ${table.name}` : ''} — ${clickable ? 'abrir conta' : 'livre'}`}
       className={cn(
-        'flex min-h-28 flex-col items-start rounded-2xl border-2 p-3 text-left transition-all',
+        'flex min-h-32 flex-col items-start rounded-2xl border-2 p-3 text-left transition-all sm:p-4 touch-manipulation',
         clickable
           ? 'cursor-pointer border-stone-200 bg-white hover:border-primary-300 hover:shadow-card'
           : 'cursor-default border-stone-100 bg-stone-50 opacity-70',

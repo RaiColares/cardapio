@@ -52,6 +52,8 @@ export interface UpdateEstablishmentSettingsPayload {
   logoUrl?: string | null;
   serviceFeeEnabled?: boolean;
   serviceFeeRate?: number;
+  /** FASE 24 — métodos de pagamento aceites (CASH | CARD | PIX). */
+  acceptedPaymentMethods?: string[];
 }
 
 export async function getEstablishmentSettings(): Promise<EstablishmentSettings> {

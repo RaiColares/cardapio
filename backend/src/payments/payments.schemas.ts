@@ -11,7 +11,7 @@ import { z } from 'zod';
  * método e status próprios.
  */
 
-export const PAYMENT_METHODS = ['CASH', 'CARD', 'PIX'] as const;
+export const PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'] as const;
 export const PAYMENT_STATUSES = [
   'PENDING',
   'PAID',

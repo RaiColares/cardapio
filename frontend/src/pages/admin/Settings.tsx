@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Save } from 'lucide-react';
+import { Building2, Save, Wallet } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -23,42 +23,79 @@ import {
  * - name: 2..150
  * - logoUrl: URL válida (até 500), vazia = remove o logo
  * - serviceFeeRate: 0..100 com no máximo 2 casas decimais
+ * - métodos de pagamento: ao menos um ativo (o backend exige lista não vazia)
  *
  * O backend é a autoridade; a taxa enviada aqui é apenas persistida.
+ *
+ * FASE 24 — "Cartão de Crédito" e "Cartão de Débito" compartilham o método
+ * CARD do backend (o domínio aceita CASH | CARD | PIX). Basta um deles estar
+ * ativo para o CARD ser enviado nas configurações aceites.
  */
-const settingsFormSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(2, 'O nome deve ter no mínimo 2 caracteres.')
-    .max(150, 'O nome deve ter no máximo 150 caracteres.'),
-  logoUrl: z
-    .string()
-    .trim()
-    .max(500, 'URL de imagem muito longa.')
-    .refine(
-      (value) => value === '' || z.string().url().safeParse(value).success,
-      'URL de imagem inválida.',
-    ),
-  serviceFeeEnabled: z.boolean(),
-  serviceFeeRate: z
-    .number({ invalid_type_error: 'A taxa de serviço deve ser um número.' })
-    .min(0, 'A taxa de serviço não pode ser negativa.')
-    .max(100, 'A taxa de serviço deve ser no máximo 100%.')
-    .refine((value) => {
-      const [, decimals] = String(value).split('.');
-      return decimals === undefined || decimals.length <= 2;
-    }, 'A taxa de serviço deve ter no máximo 2 casas decimais.'),
-});
+const settingsFormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, 'O nome deve ter no mínimo 2 caracteres.')
+      .max(150, 'O nome deve ter no máximo 150 caracteres.'),
+    logoUrl: z
+      .string()
+      .trim()
+      .max(500, 'URL de imagem muito longa.')
+      .refine(
+        (value) => value === '' || z.string().url().safeParse(value).success,
+        'URL de imagem inválida.',
+      ),
+    serviceFeeEnabled: z.boolean(),
+    serviceFeeRate: z
+      .number({ invalid_type_error: 'A taxa de serviço deve ser um número.' })
+      .min(0, 'A taxa de serviço não pode ser negativa.')
+      .max(100, 'A taxa de serviço deve ser no máximo 100%.')
+      .refine((value) => {
+        const [, decimals] = String(value).split('.');
+        return decimals === undefined || decimals.length <= 2;
+      }, 'A taxa de serviço deve ter no máximo 2 casas decimais.'),
+    // FASE 24 — métodos de pagamento aceites (exibidos ao cliente ao pedir a conta).
+    cashEnabled: z.boolean(),
+    pixEnabled: z.boolean(),
+    cardCreditEnabled: z.boolean(),
+    cardDebitEnabled: z.boolean(),
+  })
+  .superRefine((values, ctx) => {
+    const noneSelected =
+      !values.cashEnabled &&
+      !values.pixEnabled &&
+      !values.cardCreditEnabled &&
+      !values.cardDebitEnabled;
+    if (noneSelected) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selecione ao menos um método de pagamento aceite.',
+        path: ['cashEnabled'],
+      });
+    }
+  });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
+
+const defaultValues: SettingsFormValues = {
+  name: '',
+  logoUrl: '',
+  serviceFeeEnabled: false,
+  serviceFeeRate: 0,
+  cashEnabled: true,
+  pixEnabled: true,
+  cardCreditEnabled: true,
+  cardDebitEnabled: true,
+};
 
 /**
  * Configurações do estabelecimento (ADMIN/MANAGER).
  *
- * Carrega GET /establishments/me, permite editar nome, logo e a taxa de
- * serviço (%). Salva via PUT /establishments/me e invalida a query para
- * que qualquer outra tela reflita os novos valores.
+ * Carrega GET /establishments/me, permite editar nome, logo, taxa de
+ * serviço (%) e os métodos de pagamento aceites. Salva via PUT
+ * /establishments/me (a API de configurações é PUT — não existe PATCH) e
+ * invalida a query para que qualquer outra tela reflita os novos valores.
  */
 export function AdminSettingsPage() {
   const queryClient = useQueryClient();
@@ -78,24 +115,29 @@ export function AdminSettingsPage() {
     formState: { errors, isDirty },
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: {
-      name: '',
-      logoUrl: '',
-      serviceFeeEnabled: false,
-      serviceFeeRate: 0,
-    },
+    defaultValues,
   });
 
   const serviceFeeEnabled = watch('serviceFeeEnabled');
+  const cashEnabled = watch('cashEnabled');
+  const pixEnabled = watch('pixEnabled');
+  const cardCreditEnabled = watch('cardCreditEnabled');
+  const cardDebitEnabled = watch('cardDebitEnabled');
 
   // Popula o formulário assim que os dados carregam / são invalidados.
   useEffect(() => {
     if (settingsQuery.data) {
+      const methods = settingsQuery.data.acceptedPaymentMethods ?? [];
       reset({
         name: settingsQuery.data.name,
         logoUrl: settingsQuery.data.logoUrl ?? '',
         serviceFeeEnabled: settingsQuery.data.serviceFeeEnabled,
         serviceFeeRate: settingsQuery.data.serviceFeeRate,
+        // Crédito e débito agora são independentes (CREDIT_CARD / DEBIT_CARD).
+        cashEnabled: methods.includes('CASH'),
+        pixEnabled: methods.includes('PIX'),
+        cardCreditEnabled: methods.includes('CREDIT_CARD'),
+        cardDebitEnabled: methods.includes('DEBIT_CARD'),
       });
     }
   }, [settingsQuery.data, reset]);
@@ -107,6 +149,12 @@ export function AdminSettingsPage() {
         logoUrl: values.logoUrl.trim() === '' ? null : values.logoUrl.trim(),
         serviceFeeEnabled: values.serviceFeeEnabled,
         serviceFeeRate: values.serviceFeeRate,
+        acceptedPaymentMethods: [
+          ...(values.cashEnabled ? ['CASH'] : []),
+          ...(values.pixEnabled ? ['PIX'] : []),
+          ...(values.cardCreditEnabled ? ['CREDIT_CARD'] : []),
+          ...(values.cardDebitEnabled ? ['DEBIT_CARD'] : []),
+        ],
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['establishment-settings'] });
@@ -125,6 +173,10 @@ export function AdminSettingsPage() {
   const onSubmit = (values: SettingsFormValues): void => {
     saveMutation.mutate(values);
   };
+
+  function toggle(field: 'cashEnabled' | 'pixEnabled' | 'cardCreditEnabled' | 'cardDebitEnabled') {
+    setValue(field, !watch(field), { shouldDirty: true, shouldValidate: true });
+  }
 
   return (
     <div className="flex max-w-2xl flex-col gap-5">
@@ -215,6 +267,69 @@ export function AdminSettingsPage() {
               />
             </div>
 
+            <div className="h-px bg-stone-100" aria-hidden="true" />
+
+            {/* FASE 24 — métodos de pagamento aceites (exibidos ao cliente) */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center rounded-xl bg-sand-100 text-stone-500">
+                  <Wallet className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-stone-800">Métodos de pagamento</p>
+                  <p className="text-xs text-stone-500">
+                    São as opções exibidas ao cliente ao pedir a conta.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-col overflow-hidden rounded-xl border border-stone-200">
+                <PaymentMethodRow
+                  id="settings-method-cash"
+                  label="Dinheiro"
+                  description="Pagamento em espécie"
+                  checked={cashEnabled}
+                  disabled={saving}
+                  onToggle={() => toggle('cashEnabled')}
+                />
+                <PaymentMethodRow
+                  id="settings-method-pix"
+                  label="PIX"
+                  description="QR Code ou pix copia e cola"
+                  checked={pixEnabled}
+                  disabled={saving}
+                  onToggle={() => toggle('pixEnabled')}
+                />
+                <PaymentMethodRow
+                  id="settings-method-credit"
+                  label="Cartão de Crédito"
+                  description="Aprove na maquininha"
+                  checked={cardCreditEnabled}
+                  disabled={saving}
+                  onToggle={() => toggle('cardCreditEnabled')}
+                />
+                <PaymentMethodRow
+                  id="settings-method-debit"
+                  label="Cartão de Débito"
+                  description="Aprove na maquininha"
+                  checked={cardDebitEnabled}
+                  disabled={saving}
+                  onToggle={() => toggle('cardDebitEnabled')}
+                />
+              </div>
+
+              {errors.cashEnabled?.message && (
+                <p role="alert" className="text-xs font-medium text-red-600">
+                  {errors.cashEnabled.message}
+                </p>
+              )}
+
+              <p className="text-xs text-stone-400">
+                Crédito e débito compartilham o método Cartão no sistema — basta um deles ativo
+                para aceitar cartões.
+              </p>
+            </div>
+
             <div className="flex justify-end gap-2 border-t border-stone-100 pt-4">
               <Button
                 type="submit"
@@ -230,6 +345,38 @@ export function AdminSettingsPage() {
           </form>
         </Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * Linha de método de pagamento do bloco de configurações (FASE 24).
+ * Switch acessível + rótulo e descrição visíveis.
+ */
+function PaymentMethodRow({
+  id,
+  label,
+  description,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-stone-100 bg-white px-4 py-3 last:border-b-0">
+      <div>
+        <label htmlFor={id} className="block cursor-pointer text-sm font-semibold text-stone-800">
+          {label}
+        </label>
+        <p className="text-xs text-stone-500">{description}</p>
+      </div>
+      <Switch id={id} checked={checked} disabled={disabled} onChange={onToggle} aria-label={label} />
     </div>
   );
 }

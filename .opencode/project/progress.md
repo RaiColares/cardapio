@@ -1,6 +1,6 @@
 # Progresso do Projeto
 
-Última atualização: 23/09/2026
+Última atualização: 09/10/2026
 
 ## Fases concluídas
 
@@ -254,7 +254,7 @@
 - **`src/pages/waiter/Dashboard.tsx`** (rota /waiter via WaiterPage): Tabs **Fila** / **Mesas**.
   - Fila: PENDING → "Aceitar pedido" (→CONFIRMED), READY → "Marcar como entregue" (→DELIVERED); cards com mesa, itens, total e tempo; badge `Fila (N)`.
   - Mesas: mapa agrupado por **área** com `TableStatusBadge`; destaque visual e texto para `BILL_REQUESTED`; clique em mesa ocupada resolve a `sessionId` via `GET /orders?tableId=…` (não há rota de listagem de sessões) e abre o BillDrawer; mesa sem pedidos → Toast informativo.
-- **`src/components/waiter/BillDrawer.tsx`** (novo, Drawer `right`): resumo (pedidos, itens, subtotal, taxa %/R$, pago PAID, falta pagar), itens da comanda, **pagamentos registrados** (Badge de status) e formulário **Registrar pagamento** (RHF+Zod: valor>0, método CASH/CARD/PIX, situação PAID/PENDING) → `POST /table-sessions/:id/payments`; rodapé com TOTAL + botão **"Fechar mesa"** → `POST /close` com Toast dos erros amigáveis (`SESSION_HAS_OPEN_ORDERS`/`INSUFFICIENT_PAYMENT`).
+- **`src/components/waiter/BillDrawer.tsx`** (novo, Drawer `right`): resumo (pedidos, itens, subtotal, taxa %/R$, pago PAID, falta pagar), itens da comanda, **pagamentos registrados** (Badge de status) e formulário **Registrar pagamento** (RHF+Zod: valor>0, método CASH/CREDIT_CARD/DEBIT_CARD/PIX na nomenclatura da FASE 24.3, situação PAID/PENDING) → `POST /table-sessions/:id/payments`; rodapé com TOTAL + botão **"Fechar mesa"** → `POST /close` com Toast dos erros amigáveis (`SESSION_HAS_OPEN_ORDERS`/`INSUFFICIENT_PAYMENT`).
 - **`CustomerPanel.tsx` (refatorado — Fase 16.1)**: aba "Meus pedidos" agora prioriza o **extrato público** `GET /public/table-sessions/:token/orders` (itens + status + **summary real do backend**: subtotal/taxa/desconto/total), com fallback para o rastreio local pedido-a-pedido apenas quando o extrato não responde; botão "Pedir a conta" mantido.
 
 ### Validação (backend :4000 + Vite :5173)
@@ -438,3 +438,66 @@ Consome as correções 23.1 do backend:
   `KitchenLayout.tsx` e `LogoutButton.tsx`.
 - CSS gerado contém `hover\:bg-white/10`, `sm\:ml-0`, `sm\:inline-block` e
   `text-white/90`.
+
+## Fase 24 — Painel do Gerente (VALIDADA)
+
+### Fase 24.1 — Frontend: navegação, saudação e responsividade (Fase 24 frontend)
+
+- **`layouts/AdminLayout.tsx`**: sidebar passou a exibir os links **Salão**
+  (`/waiter`) e **Cozinha** (`/kitchen`) — acessíveis a ADMIN e MANAGER —
+  habilitando o gerente a operar o salão sem trocar de usuário. Saudação
+  **"Olá, [Nome]"** no topo do painel.
+- **`layouts/WaiterLayout.tsx`** e **`layouts/KitchenLayout.tsx`**: saudação
+  **"Olá, [Nome]"** no cabeçalho (nome do usuário via `GET /users/me`) ao
+  lado do badge "Painel operacional"; atalho "Painel" para MANAGER/ADMIN.
+- **Salão responsivo** (`pages/waiter/Dashboard.tsx`): grades responsivas
+  (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`) no mapa de mesas; `TableCard`
+  adaptado ao mobile (presença da área e desconto/taxa legíveis).
+- **`components/ui/Drawer.tsx`** + **`BillDrawer.tsx`**: `size="lg"` para
+  melhor leitura da conta em desktop; avisos de "sem consumo" e fecho a
+  R$ 0,00 mantidos.
+
+### Fase 24.2 — Backend: configurações de pagamento e gestão de equipe pelo MANAGER
+
+- **`schema.prisma`**: `Establishment.acceptedPaymentMethods String[]`
+  `@default(["CASH","CREDIT_CARD","DEBIT_CARD","PIX"])` — `String[]` (não `enum[]`) porque o
+  Prisma não suporta listas de enum no PostgreSQL; valores espelham o enum
+  `PaymentMethod` (`CASH|CREDIT_CARD|DEBIT_CARD|PIX`). Migrações aplicadas:
+  `20261009215733_add_payment_settings` (origem, default `["CASH","CARD","PIX"]`)
+  e **`20261009220000_split_card_payment_methods`** (FASE 24.3: `CARD` vira
+  `CREDIT_CARD` + `DEBIT_CARD` independentes; dados remapeados: pagamentos e
+  intenções `CARD` → `CREDIT_CARD`, listas com `CARD` → `CREDIT_CARD`+`DEBIT_CARD`).
+- **`GET/PUT /establishments/me`**: passam a retornar/aceitar
+  `acceptedPaymentMethods` (schema Zod: valores `CASH|CREDIT_CARD|DEBIT_CARD|PIX`,
+  lista única, ≥1, ≤4, sem duplicados) — atualizado na FASE 24.3.
+- **Rotas de equipe** (`users.routes.ts`): `POST /users` e
+  `PUT|PATCH /users/:id` liberadas para **ADMIN e MANAGER**; `GET /:id` e
+  `DELETE /:id` permanecem ADMIN-only (gerir gestores segue fora do escopo
+  do gerente).
+- **Segurança do MANAGER** (`users.service.ts`): criar → somente
+  `WAITER|KITCHEN`, senão `403 FORBIDDEN`; editar → alvo deve ser
+  `WAITER|KITCHEN` e `role` (se informada) não pode ser `ADMIN|MANAGER`
+  (bloqueia também promoção) — proteção contra escalada de privilégio.
+  Proteções do dono (`CANNOT_MODIFY_ADMIN`, `teamRoles` nunca cria ADMIN)
+  mantidas.
+- **Verificação do PIX**: rastreada a cadeia completa
+  `request-bill` (schema `z.enum(['CASH','CARD','PIX'])`) → persistência
+  (`paymentMethodIntent ?? null`, sem coerção) → `GET /table-sessions/:id/bill`
+  (`?? null` só para valor nulo no banco) → evento realtime `BILL_REQUESTED`.
+  **Sem fallback**: `paymentMethodIntent: "PIX"` chega íntegro no payload.
+- **Contrato frontend sincronizado**: `EstablishmentSettings.acceptedPaymentMethods`
+  (`types/domain.ts` e `services/establishments.ts`).
+- **`api.md` atualizado**: RBAC do MANAGER (legt./cria/edita equipe
+  operacional, 3 `403` em gestores) e campo `acceptedPaymentMethods` nos
+  contratos de settings.
+
+### Validação (Fase 24)
+
+- Backend: `npm run typecheck` e `npm run build` limpos; frontend:
+  `npm run typecheck` limpo (contrato sincronizado).
+- Runtime (8/8 checks, script temporário removido ao final): GET settings
+  → default `["CASH","CARD","PIX"]`; PUT persiste e restaura default;
+  MANAGER criar MANAGER → `403 FORBIDDEN`; MANAGER criar WAITER → ok;
+  MANAGER editar MANAGER → 403; MANAGER promover WAITER→MANAGER → 403;
+  MANAGER editar WAITER → ok; ADMIN criar MANAGER → ok. Dados de teste
+  removidos e default do estabelecimento demo confirmado via psql.

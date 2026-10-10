@@ -35,18 +35,19 @@ por engano de fora da lista. Espelha o frontend, onde `/admin/*`,
 | Papel | Acesso |
 |-------|--------|
 | `ADMIN` | Total (inclusive gestão de equipe e settings) |
-| `MANAGER` | Total nas rotas operacionais; **sem** gestão de credenciais — pode **listar** `GET /users` (apenas `WAITER`/`KITCHEN`) para vincular garçons às mesas |
+| `MANAGER` | Total nas rotas operacionais; na equipe, **lista** `GET /users` e **cria/edita** `POST /users` e `PUT\|PATCH /users/:id` — restrito a `WAITER`/`KITCHEN` (criar/editar `ADMIN`/`MANAGER` responde `403`) |
 | `WAITER` | Operação no seu escopo: mesas sem vínculo ou vinculadas a ele; pedidos, comandas e pagamentos |
 | `KITCHEN` | Operação: fila de pedidos (global) e transições de preparo; mesas apenas sem vínculo |
 
-**Exceção explícita:** o CRUD de equipe (`/users`, exceto a listagem
-`GET /users` e o perfil próprio `GET /users/me`) NÃO é rota operacional e
-permanece **ADMIN-only** — o MANAGER não administra credenciais de outros
-gestores. A exceção usa
-`authorizeAdminOnly()`, que ignora o bypass dos papéis elevados, deixando
-a decisão explícita e auditável no código. A única leitura liberada ao
-MANAGER é `GET /users` (FASE 23), com a resposta filtrada no service para
-`WAITER`/`KITCHEN`.
+**Exceção explícita:** o CRUD de equipe (exceto a listagem `GET /users` e
+o perfil próprio `GET /users/me`) NÃO é rota operacional. Até a FASE 23 era
+**ADMIN-only** (`authorizeAdminOnly()`); a partir da FASE 24, `POST /users`
+e `PUT|PATCH /users/:id` passam a aceitar **ADMIN e MANAGER**, com a RBAC
+fina no service: o MANAGER gerencia **apenas** `WAITER`/`KITCHEN` — tentar
+criar/editar/promover para `ADMIN`/`MANAGER` responde `403 FORBIDDEN`
+(proteção contra escalada de privilégio). `GET /users/:id` e `DELETE /users/:id`
+continuam **ADMIN-only**. O service também mantém a proteção do dono
+(`CANNOT_MODIFY_ADMIN`/`CANNOT_DELETE_ADMIN`) e o `teamRoles` nunca cria `ADMIN`.
 
 
 ## Estabelecimentos (SaaS — FASE 18)
@@ -83,7 +84,15 @@ Body:
 - `GET`: configurações do estabelecimento autenticado (`establishmentId`
   extraído do JWT, nunca de parâmetro/body).
 - `PUT`: atualiza parcialmente `name`, `logoUrl`, `serviceFeeEnabled`,
-  `serviceFeeRate` (0–100, máx. 2 casas decimais); campos ausentes são ignorados.
+  `serviceFeeRate` (0–100, máx. 2 casas decimais) e (FASE 24)
+  `acceptedPaymentMethods` (`string[]` — valores
+  `CASH|CREDIT_CARD|DEBIT_CARD|PIX`, lista única, não vazia, máx. 4; crédito
+  e débito são métodos independentes); campos ausentes são ignorados.
+- `acceptedPaymentMethods` default na criação (migração
+  `split_card_payment_methods`): `["CASH","CREDIT_CARD","DEBIT_CARD","PIX"]`.
+  (O default `["CASH","CARD","PIX"]` da FASE 24 foi substituído; dados
+  existentes foram remapeados: `CARD` → `CREDIT_CARD`, e listas com `CARD`
+  passaram a conter `CREDIT_CARD` + `DEBIT_CARD`.)
 - `serviceFeeRate` retornado normalizado como `number`.
 - Erros: `VALIDATION_ERROR`, `AUTH_REQUIRED`, `FORBIDDEN`,
   `ESTABLISHMENT_NOT_FOUND`.
@@ -100,18 +109,22 @@ acessível a qualquer role autenticada.
 | GET | `/users/me` | Perfil do usuário autenticado (qualquer role) |
 | GET | `/users` | Lista usuários do **mesmo** estabelecimento (ADMIN; MANAGER vê só `WAITER`/`KITCHEN`) |
 | GET | `/users/:id` | Detalhe de membro da equipe (ADMIN, tenant do token) |
-| POST | `/users` | Cria membro (ADMIN) — `name`, `email`, `password`, `role`, `phone?` |
-| PUT/PATCH | `/users/:id` | Atualiza membro (ADMIN) — `name?`, `email?`, `password?`, `role?`, `phone?`, `active?` |
+| POST | `/users` | Cria membro (ADMIN/MANAGER — FASE 24) — `name`, `email`, `password`, `role`, `phone?` |
+| PUT/PATCH | `/users/:id` | Atualiza membro (ADMIN/MANAGER — FASE 24) — `name?`, `email?`, `password?`, `role?`, `phone?`, `active?` |
 | DELETE | `/users/:id` | Remove membro (ADMIN) |
 
 > `GET /users/me` é aberta a qualquer role. `GET /users` aceita `ADMIN` e
 > `MANAGER` (FASE 23): o MANAGER precisa listar a equipe operacional para
 > vincular garçons às mesas, mas a resposta é **filtrada no service** para
 > `role in (WAITER, KITCHEN)` — o MANAGER continua sem ver credenciais de
-> ADMIN/MANAGER. As demais rotas usam `authorizeAdminOnly()` — **exceção
-> explícita** ao acesso irrestrito de ADMIN/MANAGER (ver "RBAC — papéis
-> elevados"). O MANAGER recebe `403 FORBIDDEN` nelas por decisão de
-> segurança: gerir credenciais da equipe não é operação.
+> ADMIN/MANAGER. A partir da **FASE 24**, `POST /users` e
+> `PUT\|PATCH /users/:id` também aceitam `ADMIN` e `MANAGER`, com a RBAC
+> fina no service: o MANAGER só cria/edita `WAITER`/`KITCHEN` — qualquer
+> tentativa de criar/editar/promover para `ADMIN` ou `MANAGER` responde
+> `403 FORBIDDEN`. `GET /users/:id` e `DELETE /users/:id` continuam usando
+> `authorizeAdminOnly()` — **exceção explícita** ao acesso irrestrito de
+> ADMIN/MANAGER (ver "RBAC — papéis elevados"): o MANAGER não detalha nem
+> remove gestores.
 
 
 Regras:
@@ -350,7 +363,7 @@ servidor**; o cliente nunca envia totais. O PATCH exige a comanda `OPEN`
 (senão `409 SESSION_CLOSED`) e exige ao menos um campo.
 
 **Intenção de pagamento (FASE 22)**: `session` também inclui
-`paymentMethodIntent` (`CASH`|`CARD`|`PIX`, nullable) e `changeRequested`
+`paymentMethodIntent` (`CASH`|`CREDIT_CARD`|`DEBIT_CARD`|`PIX`, nullable) e `changeRequested`
 (número, nullable), lidos da própria `TableSession` (persistidos no
 `request-bill`). Permite ao garçom exibir a intenção mesmo quando o evento
 realtime `BILL_REQUESTED` foi perdido (fallback do painel).
@@ -432,7 +445,7 @@ Criar pagamento `method: PIX` injeta (FASE 11 — integração fictícia):
   (formato EMV® QR Code), `qrCodeBase64` (placeholder), `emittedAt`,
   `expiresAt` (+15min), `status: CREATED`.
 
-Campos persistidos: `amount`, `method` (`CASH|CARD|PIX`), `status`,
+Campos persistidos: `amount`, `method` (`CASH|CREDIT_CARD|DEBIT_CARD|PIX`), `status`,
 `gatewayTransactionId`, `gatewayResponse`, `paidAt`/`failedAt`/`refundedAt`/
 `cancelledAt`.
 
@@ -563,7 +576,7 @@ O cliente da mesa solicita a conta:
 1. Sessão deve existir e estar `OPEN` (`SESSION_NOT_FOUND`/`SESSION_CLOSED`).
 2. Mesa → `BILL_REQUESTED` (chama o garçom/painéis).
 3. **Intenção de pagamento (FASE 22)** — body opcional:
-   `paymentMethodIntent` (`CASH`|`CARD`|`PIX`, nullable) e
+   `paymentMethodIntent` (`CASH`|`CREDIT_CARD`|`DEBIT_CARD`|`PIX`, nullable) e
    `changeRequested` (número positivo, ≤2 casas, máx 9.999.999,99, nullable)
    são persistidos na comanda e repassados no evento.
 4. Emite `BILL_REQUESTED`.

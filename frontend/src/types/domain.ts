@@ -191,6 +191,12 @@ export interface MenuEstablishment {
   state: string | null;
   serviceFeeEnabled: boolean;
   serviceFeeRate: number | null;
+  /**
+   * FASE 24 — métodos de pagamento aceites pelo estabelecimento
+   * (CASH | CREDIT_CARD | DEBIT_CARD | PIX). Opcional: só presente quando a API pública do
+   * cardápio expõe o campo (contrato futuro do GET /public/menu).
+   */
+  acceptedPaymentMethods?: PaymentMethod[];
 }
 
 export type ModifierSelectionType = 'SINGLE' | 'MULTIPLE';
@@ -292,7 +298,7 @@ export interface BillRequestResult {
   tableNumber: string;
   tableName: string | null;
   tableStatus: TableStatus;
-  /** Intenção de pagamento informada pelo cliente (FASE 22): CASH | CARD | PIX. */
+  /** Intenção de pagamento informada pelo cliente (FASE 22): CASH | CREDIT_CARD | DEBIT_CARD | PIX. */
   paymentMethodIntent: PaymentMethod | null;
   /** Troco solicitado (relevante apenas para CASH). */
   changeRequested: number | null;
@@ -414,7 +420,7 @@ export interface SessionBill {
   }[];
 }
 
-export type PaymentMethod = 'CASH' | 'CARD' | 'PIX';
+export type PaymentMethod = 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX';
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
 
 export interface Payment {
@@ -473,6 +479,8 @@ export interface EstablishmentSettings {
   logoUrl: string | null;
   serviceFeeEnabled: boolean;
   serviceFeeRate: number;
+  /** FASE 24 — métodos de pagamento aceites (CASH | CREDIT_CARD | DEBIT_CARD | PIX). */
+  acceptedPaymentMethods: string[];
   status: EstablishmentStatus;
   createdAt: string;
   updatedAt: string;

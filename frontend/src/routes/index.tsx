@@ -70,11 +70,12 @@ export function AppRoutes() {
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="reports" element={<AdminReportsPage />} />
         <Route path="settings" element={<AdminSettingsPage />} />
-        {/* Equipe é exclusiva de ADMIN (espelha o authorize do backend). */}
+        {/* Equipe: ADMIN gerencia tudo; MANAGER gere apenas WAITER/KITCHEN
+            (o serviço do backend bloqueia gestores com 403 — FASE 24). */}
         <Route
           path="team"
           element={
-            <ProtectedRoute allowedRoles={['ADMIN']}>
+            <ProtectedRoute allowedRoles={['ADMIN', 'MANAGER']}>
               <AdminTeamPage />
             </ProtectedRoute>
           }

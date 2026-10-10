@@ -9,9 +9,22 @@ export interface DrawerProps {
   onClose: () => void;
   title?: string;
   placement?: 'right' | 'bottom';
+  /**
+   * Largura do drawer lateral (ignorado em placement="bottom").
+   * O padrão 'sm' preserva o comportamento original; 'lg' abre mais para
+   * acomodar conteúdos densos (ex.: comanda) em telas grandes.
+   */
+  size?: 'sm' | 'md' | 'lg';
   children: ReactNode;
   footer?: ReactNode;
 }
+
+/** Larguras do drawer lateral (mobile-first: w-full até o limite do breakpoint). */
+const rightWidthBySize: Record<NonNullable<DrawerProps['size']>, string> = {
+  sm: 'w-full max-w-sm',
+  md: 'w-full max-w-md',
+  lg: 'w-full max-w-md lg:max-w-lg xl:max-w-xl',
+};
 
 /**
  * Painel lateral/bottom-sheet acessível.
@@ -22,6 +35,7 @@ export function Drawer({
   onClose,
   title,
   placement = 'bottom',
+  size = 'sm',
   children,
   footer,
 }: DrawerProps) {
@@ -69,7 +83,7 @@ export function Drawer({
           'absolute z-10 flex flex-col bg-white shadow-pop',
           isBottom
             ? 'inset-x-0 bottom-0 max-h-[85dvh] animate-slide-up rounded-t-3xl'
-            : 'inset-y-0 right-0 w-full max-w-sm animate-slide-in-right rounded-l-2xl',
+            : cn('inset-y-0 right-0 animate-slide-in-right rounded-l-2xl', rightWidthBySize[size]),
         )}
       >
         {title && (
