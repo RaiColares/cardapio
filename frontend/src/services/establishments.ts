@@ -2,41 +2,31 @@ import type { EstablishmentSettings } from '../types/domain.js';
 import { api } from './api.js';
 
 /* ------------------------------------------------------------------
- * Onboarding SaaS (FASE 19) — POST /establishments/register (público)
+ * Onboarding SaaS (FASE 25) — POST /auth/register (público)
+ * O contrato mapeia estritamente o registerSchema do backend.
  * ------------------------------------------------------------------ */
 
 export interface RegisterEstablishmentPayload {
-  name: string;
+  establishmentName: string;
   slug: string;
   ownerName: string;
-  ownerEmail: string;
-  ownerPassword: string;
+  email: string;
+  password: string;
 }
 
 export interface RegisterEstablishmentResult {
-  establishment: {
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-    createdAt: string;
-  };
-  owner: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    active: boolean;
-    createdAt: string;
-  };
+  message: string;
 }
 
-/** Cria o restaurante e o usuário proprietário (ADMIN) atomicamente. */
+/**
+ * Cria o restaurante e o usuário proprietário (ADMIN) atomicamente.
+ * Responde com mensagem de sucesso; o fluxo segue para /auth/login.
+ */
 export async function registerEstablishment(
   payload: RegisterEstablishmentPayload,
 ): Promise<RegisterEstablishmentResult> {
   const { data } = await api.post<{ success: true; data: RegisterEstablishmentResult }>(
-    '/establishments/register',
+    '/auth/register',
     payload,
   );
   return data.data;

@@ -28,8 +28,7 @@ import { OrderStatusBadge, TableStatusBadge } from '../../components/ui/StatusBa
 import { Table, TBody, TD, TH, THead, TRow } from '../../components/ui/Table.js';
 import { Tabs } from '../../components/ui/Tabs.js';
 import { useToast } from '../../components/ui/Toast.js';
-import { mockCategories, mockProducts } from '../../mocks/menu.js';
-import type { Order, TableStatus } from '../../types/domain.js';
+import type { Order, Product, TableStatus } from '../../types/domain.js';
 
 const sampleOrders: Order[] = [
   { id: 'o1', orderNumber: 102, tableLabel: 'Mesa 12', status: 'PENDING', itemsCount: 3, total: 86.7, createdAt: '19:42' },
@@ -44,6 +43,63 @@ const allTableStatuses: TableStatus[] = [
   'PREPARING',
   'READY',
   'BILL_REQUESTED',
+];
+
+/**
+ * Conteúdo de demonstração EXCLUSIVO desta galeria (rota /dev/design-system).
+ *
+ * A galeria renderiza pequenos e médios com uso real, portanto precisa de
+ * conteúdo de amostra para exibir os componentes. Nenhum dado falsificado
+ * vive fora daqui: o sistema (cardápio, pedidos, dashboard) consome
+ * exclusivamente a API real.
+ */
+const sampleCategories = [
+  { id: 'cat-pratos', name: 'Pratos Quentes', displayOrder: 1 },
+  { id: 'cat-bebidas', name: 'Bebidas', displayOrder: 2 },
+  { id: 'cat-tira-gostos', name: 'Tira-Gostos', displayOrder: 3 },
+  { id: 'cat-cervejas', name: 'Cervejas', displayOrder: 4 },
+];
+
+const sampleProducts: Product[] = [
+  {
+    id: 'p-001',
+    categoryId: 'cat-pratos',
+    name: 'Hambúrguer Artesanal',
+    description: 'Pão brioche, blend 160g, queijo e molho da casa.',
+    price: 32.9,
+    featured: true,
+    available: 'available',
+    displayOrder: 1,
+  },
+  {
+    id: 'p-002',
+    categoryId: 'cat-tira-gostos',
+    name: 'Porção de Batata',
+    description: 'Batatas rústicas com alecrim e parmesão.',
+    price: 24.9,
+    promotionalPrice: 19.9,
+    available: 'available',
+    displayOrder: 2,
+  },
+  {
+    id: 'p-003',
+    categoryId: 'cat-cervejas',
+    name: 'Cerveja Long Neck',
+    description: 'Gelada, 355ml.',
+    price: 9.9,
+    available: 'unavailable',
+    displayOrder: 3,
+  },
+  {
+    id: 'p-004',
+    categoryId: 'cat-bebidas',
+    name: 'Caipirinha de Limão',
+    description: 'Limão, açúcar e cachaça artesanal.',
+    price: 18.9,
+    featured: true,
+    available: 'available',
+    displayOrder: 4,
+  },
 ];
 
 function SectionTitle({
@@ -281,7 +337,7 @@ export function DesignSystemPage() {
       {/* Menu: categorias e produtos */}
       <SectionTitle icon={PanelsTopLeft}>Cardápio</SectionTitle>
       <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
-        {mockCategories.map((category) => (
+        {sampleCategories.map((category) => (
           <CategoryCard
             key={category.id}
             name={category.name}
@@ -291,7 +347,7 @@ export function DesignSystemPage() {
         ))}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
-        {mockProducts.map((product) => (
+        {sampleProducts.map((product) => (
           <ProductCard
             key={product.id}
             product={product}

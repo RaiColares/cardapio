@@ -1,8 +1,10 @@
-import { AppError } from '../common/errors/AppError.js';
+import { Prisma } from '@prisma/client';
+
 import { signAccessToken } from '../common/auth/jwt.js';
-import { verifyPassword } from '../common/auth/password.js';
+import { hashPassword, verifyPassword } from '../common/auth/password.js';
+import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
-import type { LoginInput } from './auth.schemas.js';
+import type { LoginInput, RegisterInput } from './auth.schemas.js';
 
 /**
  * Autentica um usuário e retorna o access token JWT.
@@ -64,4 +66,118 @@ export async function loginWithCredentials(input: LoginInput) {
       establishmentId: user.establishmentId,
     },
   };
+}
+
+// ============================================================
+// FASE 25 — Onboarding de clientes SaaS (POST /auth/register)
+// ============================================================
+
+/**
+ * Métodos de pagamento padrão aplicados a todo estabelecimento novo.
+ *
+ * Espelha o default da migração `split_card_payment_methods` (FASE 24):
+ * `CASH | CREDIT_CARD | DEBIT_CARD | PIX`. O Prisma já aplica esse valor
+ * pelo default do schema; defini-lo explicitamente deixa a intenção
+ * registrada no código do onboarding e documenta o contrato de criação.
+ */
+const DEFAULT_ACCEPTED_PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'PIX'] as const;
+
+/**
+ * Onboarding de clientes SaaS: cria o estabelecimento e o usuário
+ * proprietário (role `ADMIN`) atomicamente em UMA transação.
+ *
+ * Regras de negócio:
+ * 1. `slug` (estabelecimento) é globalmente único — conflito responde 400;
+ * 2. `email` (usuário) é globalmente único — conflito responde 400;
+ * 3. a senha recebe hash bcrypt ANTES da transação (nunca passa em texto
+ *    puro adiante; dentro do `$transaction` interativo não há operação
+ *    assíncrona externa);
+ * 4. o Establishment nasce com as configurações padrão: sem taxa de
+ *    serviço (`serviceFeeEnabled=false`, `serviceFeeRate=0`) e com os
+ *    métodos de pagamento padrão da FASE 24;
+ * 5. o usuário proprietário é criado vinculado ao estabelecimento com a
+ *    role `ADMIN` (o ADMIN nasce SOMENTE aqui — nenhum fluxo de equipe
+ *    cria administradores);
+ * 6. retorna mensagem de sucesso (o proprietário faz login no fluxo
+ *    seguinte, como em `/auth/login`).
+ *
+ * Proteção contra corrida: o catch de P2002 (unique constraint) cobre a
+ * janela entre a pré-checagem e o `create`, respondendo 400 no lugar de 500.
+ */
+export async function registerEstablishmentWithOwner(input: RegisterInput) {
+  const [slugInUse, emailInUse] = await Promise.all([
+    prisma.establishment.findUnique({
+      where: { slug: input.slug },
+      select: { id: true },
+    }),
+    prisma.user.findUnique({
+      where: { email: input.email },
+      select: { id: true },
+    }),
+  ]);
+
+  if (slugInUse) {
+    throw new AppError(
+      400,
+      'SLUG_ALREADY_IN_USE',
+      'Este slug já está em uso por outro estabelecimento.',
+    );
+  }
+
+  if (emailInUse) {
+    throw new AppError(400, 'EMAIL_ALREADY_IN_USE', 'Este e-mail já está em uso.');
+  }
+
+  const ownerPasswordHash = await hashPassword(input.password);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const establishment = await tx.establishment.create({
+        data: {
+          name: input.establishmentName,
+          slug: input.slug,
+          // Configurações padrão de pagamento (FASE 24).
+          serviceFeeEnabled: false,
+          serviceFeeRate: 0,
+          acceptedPaymentMethods: [...DEFAULT_ACCEPTED_PAYMENT_METHODS],
+        },
+        select: { id: true },
+      });
+
+      await tx.user.create({
+        data: {
+          establishmentId: establishment.id,
+          name: input.ownerName,
+          email: input.email,
+          passwordHash: ownerPasswordHash,
+          role: 'ADMIN',
+          active: true,
+        },
+        select: { id: true },
+      });
+    });
+
+    return {
+      message: 'Estabelecimento registrado com sucesso. Faça login para continuar.',
+    };
+  } catch (error) {
+    // Conflito de unicidade global disparado na transação (slug ou e-mail):
+    // a janela entre a pré-checagem e o create é coberta aqui — jamais 500.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const target = error.meta?.target;
+      const fields = Array.isArray(target) ? target : [String(target)];
+
+      if (fields.includes('slug')) {
+        throw new AppError(
+          400,
+          'SLUG_ALREADY_IN_USE',
+          'Este slug já está em uso por outro estabelecimento.',
+        );
+      }
+
+      throw new AppError(400, 'EMAIL_ALREADY_IN_USE', 'Este e-mail já está em uso.');
+    }
+
+    throw error;
+  }
 }

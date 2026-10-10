@@ -149,12 +149,12 @@ export function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-sm text-stone-500">
-          Ainda não tem um restaurante?{' '}
+          Deseja usar o sistema no seu restaurante?{' '}
           <Link
             to="/register"
             className="font-semibold text-primary-700 hover:text-primary-600 hover:underline"
           >
-            Criar conta
+            Cadastre-se aqui
           </Link>
         </p>
 

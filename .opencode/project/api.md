@@ -13,6 +13,7 @@ Formato de resposta padrão:
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
+| POST | `/auth/register` | Onboarding de clientes SaaS (sem JWT) → `{ message }` |
 | POST | `/auth/login` | Login (email + senha) → `{ token, user }` |
 | GET | `/users/me` | Perfil do usuário autenticado (Bearer token) |
 | GET | `/users` | Lista usuários do establishment (ADMIN/MANAGER) |
@@ -21,6 +22,51 @@ Login: `{ "email": "...", "password": "..." }`
 JWT: `Authorization: Bearer <token>` | expiração 8h.
 
 Erros: `INVALID_CREDENTIALS`, `USER_INACTIVE`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_TOKEN`.
+
+### POST `/auth/register` — onboarding de clientes SaaS (FASE 25, sem JWT)
+
+Cadastro de novos restaurantes/balneários na plataforma. Rota **pública**
+(montada antes do middleware `authenticate` no `apiRouter`). Cria o
+`Establishment` e o `User` proprietário (role `ADMIN`) atomicamente em
+**uma transação** (`prisma.$transaction`). O hash bcrypt (12 rodadas) é
+aplicado à senha **antes** da transação — a senha em texto puro nunca
+passa adiante.
+
+Configurações padrão de pagamento aplicadas na criação do estabelecimento
+(FASE 24): `serviceFeeEnabled: false`, `serviceFeeRate: 0` e
+`acceptedPaymentMethods: ["CASH","CREDIT_CARD","DEBIT_CARD","PIX"]`.
+
+Body:
+
+```json
+{
+  "establishmentName": "Balneário Praia Azul",
+  "slug": "praia-azul",
+  "ownerName": "Carlos Proprietário",
+  "email": "carlos@praiaazul.com",
+  "password": "senha123"
+}
+```
+
+- `establishmentName`: nome do estabelecimento (min. 2, máx. 150).
+- `slug`: minúsculo, sem acentos, hífens entre segmentos
+  (regex `^[a-z0-9]+(-[a-z0-9]+)*$`, min. 3, máx. 120). **Globalmente
+  único** — é a URL pública do cardápio (`GET /public/menu/:slug`).
+- `ownerName`: nome do proprietário (min. 2, máx. 150).
+- `email`: e-mail do proprietário, normalizado (trim + minúsculas),
+  **globalmente único** na plataforma.
+- `password`: senha do proprietário (mín. **6**, máx. 128).
+
+Resposta `201`:
+
+```json
+{ "success": true, "data": { "message": "Estabelecimento registrado com sucesso. Faça login para continuar." } }
+```
+
+O fluxo de login é o mesmo do painel (`POST /auth/login`).
+
+Erros: `VALIDATION_ERROR` (400), `SLUG_ALREADY_IN_USE` (400),
+`EMAIL_ALREADY_IN_USE` (400).
 
 ### RBAC — papéis elevados (FASE 23)
 

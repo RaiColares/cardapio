@@ -56,7 +56,7 @@ export interface Product {
   name: string;
   description?: string;
   imageUrl?: string;
-  /** Valor em centavos? Não — em reais/décimos para exibição mockada. Backend define o formato oficial. */
+  /** Valor em reais, conforme devolvido pela API (o frontend nunca calcula preço). */
   price: number;
   promotionalPrice?: number;
   featured?: boolean;
