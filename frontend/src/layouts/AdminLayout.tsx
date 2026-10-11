@@ -13,11 +13,11 @@ import {
   Tags,
   Users,
   UtensilsCrossed,
-  Waves,
 } from 'lucide-react';
 
 import { Avatar } from '../components/ui/Avatar.js';
 import { Drawer } from '../components/ui/Drawer.js';
+import { EstablishmentBrand } from '../components/ui/EstablishmentBrand.js';
 import { LogoutButton } from '../components/ui/LogoutButton.js';
 import { useAuthStore } from '../stores/authStore.js';
 import type { Role } from '../types/domain.js';
@@ -59,6 +59,7 @@ const operationItems: NavItem[] = [
 
 /** Rótulo legível do papel (exibido no rodapé do menu). */
 const roleLabels: Record<Role, string> = {
+  SUPER_ADMIN: 'Super Administrador',
   ADMIN: 'Administrador',
   MANAGER: 'Gerente',
   WAITER: 'Garçom',
@@ -79,6 +80,7 @@ const roleLabels: Record<Role, string> = {
 export function AdminLayout() {
   const role = useAuthStore((s) => s.role);
   const user = useAuthStore((s) => s.user);
+  const establishment = useAuthStore((s) => s.establishment);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const visibleManagement = managementItems.filter((item) =>
@@ -151,10 +153,10 @@ export function AdminLayout() {
       {/* Sidebar desktop */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-hidden border-r border-stone-200 bg-white p-4 lg:flex">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-primary-700 text-white">
-            <Waves className="size-5" aria-hidden="true" />
-          </span>
-          <span className="font-display text-lg font-semibold text-stone-900">Balneário</span>
+          <EstablishmentBrand
+            name={establishment?.name}
+            logoUrl={establishment?.logoUrl}
+          />
         </div>
         {nav}
       </aside>

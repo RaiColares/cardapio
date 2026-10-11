@@ -9,9 +9,10 @@ import { z } from 'zod';
 import { Alert } from '../components/ui/Alert.js';
 import { Button } from '../components/ui/Button.js';
 import { Input } from '../components/ui/Input.js';
+import { useToast } from '../components/ui/Toast.js';
 import { api, ApiError } from '../services/api.js';
 import { homeForRole, useAuthStore } from '../stores/authStore.js';
-import type { AuthUser } from '../types/domain.js';
+import type { AuthEstablishment, AuthUser } from '../types/domain.js';
 
 /**
  * Validação idêntica à do backend (loginSchema):
@@ -35,6 +36,8 @@ type LoginFormValues = z.infer<typeof loginFormSchema>;
 interface LoginResponse {
   token: string;
   user: AuthUser;
+  /** FASE 27 — branding do estabelecimento (nome + logo) já no login. */
+  establishment: AuthEstablishment;
 }
 
 interface LocationState {
@@ -54,6 +57,7 @@ export function LoginPage() {
   const location = useLocation();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const setSession = useAuthStore((s) => s.setSession);
+  const { showToast } = useToast();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -71,12 +75,24 @@ export function LoginPage() {
         .post<{ success: true; data: LoginResponse }>('/auth/login', credentials)
         .then((response) => response.data.data),
     onSuccess: (data) => {
-      setSession({ token: data.token, user: data.user });
+      setSession({ token: data.token, user: data.user, establishment: data.establishment });
       const from = (location.state as LocationState | null)?.from?.pathname;
       navigate(from ?? homeForRole(data.user.role), { replace: true });
     },
     onError: (error: unknown) => {
       if (error instanceof ApiError) {
+        // FASE 26 — acesso bloqueado (estabelecimento suspenso/inativo):
+        // mensagem amigável via toast, sem repetir o alerta inline.
+        if (
+          error.code === 'ESTABLISHMENT_SUSPENDED' ||
+          error.code === 'ESTABLISHMENT_INACTIVE'
+        ) {
+          showToast(
+            'error',
+            'Acesso bloqueado: Estabelecimento suspenso. Entre em contacto com a administração.',
+          );
+          return;
+        }
         setServerError(error.message);
       } else {
         setServerError('Não foi possível entrar. Tente novamente.');

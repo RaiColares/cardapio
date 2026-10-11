@@ -14,16 +14,64 @@ Formato de resposta padrão:
 | Método | Rota | Descrição |
 |--------|------|-----------|
 | POST | `/auth/register` | Onboarding de clientes SaaS (sem JWT) → `{ message }` |
-| POST | `/auth/login` | Login (email + senha) → `{ token, user }` |
-| GET | `/users/me` | Perfil do usuário autenticado (Bearer token) |
+| POST | `/auth/login` | Login (email + senha) → `{ token, user, establishment }` |
+| GET | `/auth/me` | Sessão atual: usuário + **branding** do estabelecimento (Bearer token) |
+| GET | `/users/me` | Perfil do usuário autenticado — CRUD de equipe (Bearer token) |
 | GET | `/users` | Lista usuários do establishment (ADMIN/MANAGER) |
 
 Login: `{ "email": "...", "password": "..." }`
 JWT: `Authorization: Bearer <token>` | expiração 8h.
 
-Erros: `INVALID_CREDENTIALS`, `USER_INACTIVE`, `VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_TOKEN`.
+Resposta `200` do login (`data`):
 
-### POST `/auth/register` — onboarding de clientes SaaS (FASE 25, sem JWT)
+```json
+{
+  "token": "<jwt>",
+  "user": { "id": "…", "name": "…", "email": "…", "role": "ADMIN", "establishmentId": "…" },
+  "establishment": { "id": "…", "name": "Balneário Praia Azul", "slug": "praia-azul", "logoUrl": null }
+}
+```
+
+> **FASE 27 — branding no login:** além do `user`, o login devolve o
+> `establishment` (`id`, `name`, `slug`, `logoUrl`) para o painel exibir a
+> **marca do cliente já na autenticação**, sem uma segunda chamada. O campo
+> é aditivo (não quebra clientes que ignoravam `establishment`).
+
+Erros: `INVALID_CREDENTIALS`, `USER_INACTIVE`, `ESTABLISHMENT_INACTIVE`,
+`ESTABLISHMENT_SUSPENDED` (FASE 26), `REGISTRATION_NOT_AUTHORIZED` (FASE 26),
+`VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `INVALID_TOKEN`,
+`SESSION_INVALID` (`GET /auth/me`).
+
+> **`GET /auth/me` × `GET /users/me`:** os dois retornam o usuário logado,
+> mas têm papéis diferentes. `/auth/me` é o **bootstrap de sessão**
+> (identidade + branding do tenant, mesmo envelope do login; responde
+> `401 SESSION_INVALID` quando o usuário/estabelecimento não existe mais).
+> `/users/me` é o **perfil do usuário** no módulo de equipe (campos como
+> `phone`, `active`, `createdAt`). O painel usa `/auth/me` para exibir a
+> marca; `/users/me` permanece para o CRUD de equipe.
+
+### GET `/auth/me` — sessão atual + branding (FASE 27)
+
+Retorna o usuário autenticado e o **branding do estabelecimento**
+(`name` e `logoUrl`, além de `id`/`slug`) ao qual pertence. Disponível para
+**qualquer papel** autenticado. O `userId` vem SEMPRE do token (nunca do
+cliente). Se o usuário OU o estabelecimento não existir mais (ex.: exclusão
+definitiva pelo SUPER_ADMIN em `DELETE /admin/establishments/:id`), responde
+`401 SESSION_INVALID` — a sessão deixa de valer.
+
+**Resposta 200** (`data`):
+
+```json
+{
+  "user": { "id": "…", "name": "…", "email": "…", "role": "ADMIN", "establishmentId": "…" },
+  "establishment": { "id": "…", "name": "Balneário Praia Azul", "slug": "praia-azul", "logoUrl": null }
+}
+```
+
+Erros: `401 AUTH_REQUIRED` (sem token), `401 SESSION_INVALID`
+(usuário/estabelecimento inexistente), `401 INVALID_TOKEN`.
+
+### POST `/auth/register` — onboarding de clientes SaaS (FASE 25/26, sem JWT)
 
 Cadastro de novos restaurantes/balneários na plataforma. Rota **pública**
 (montada antes do middleware `authenticate` no `apiRouter`). Cria o
@@ -31,6 +79,13 @@ Cadastro de novos restaurantes/balneários na plataforma. Rota **pública**
 **uma transação** (`prisma.$transaction`). O hash bcrypt (12 rodadas) é
 aplicado à senha **antes** da transação — a senha em texto puro nunca
 passa adiante.
+
+**Controle de onboarding (FASE 26):** o e-mail do proprietário precisa
+existir na tabela `authorized_emails` (autorizações liberadas pela
+administração). Sem autorização → `403 REGISTRATION_NOT_AUTHORIZED`
+("Cadastro não autorizado pela administração."). Após o registro, a
+autorização é **consumida** (linha removida) na MESMA transação da
+criação — uma autorização nunca gera duas contas.
 
 Configurações padrão de pagamento aplicadas na criação do estabelecimento
 (FASE 24): `serviceFeeEnabled: false`, `serviceFeeRate: 0` e
@@ -66,9 +121,19 @@ Resposta `201`:
 O fluxo de login é o mesmo do painel (`POST /auth/login`).
 
 Erros: `VALIDATION_ERROR` (400), `SLUG_ALREADY_IN_USE` (400),
-`EMAIL_ALREADY_IN_USE` (400).
+`EMAIL_ALREADY_IN_USE` (400), `REGISTRATION_NOT_AUTHORIZED` (403).
 
-### RBAC — papéis elevados (FASE 23)
+### Autenticação — bloqueio por suspensão (FASE 26)
+
+O `Establishment` ganhou o interruptor `isActive` (coluna `is_active`,
+default `true`). No **login**, além do check de `status === 'ACTIVE'`:
+
+- `isActive === false` → `403 ESTABLISHMENT_SUSPENDED`
+  ("Estabelecimento suspenso ou inativo. Entre em contato com o suporte.")
+  — bloqueia o acesso mesmo com credenciais corretas (clientes
+  inadimplentes / suspensões administrativas).
+
+### RBAC — papéis elevados (FASE 23 + FASE 27)
 
 `ADMIN` e `MANAGER` são papéis **SUPERVISORES**: nunca ficam bloqueados
 por uma allowlist de rota **operacional** (incluindo as rotas exclusivas
@@ -78,8 +143,20 @@ rota a rota — assim nenhuma rota operacional nova nasce com o MANAGER
 por engano de fora da lista. Espelha o frontend, onde `/admin/*`,
 `/waiter` e `/kitchen` aceitam ADMIN e MANAGER.
 
+> **FASE 27 — `SUPER_ADMIN`:** supervisor global da plataforma SaaS.
+> Também é papel elevado (`ELEVATED_ROLES`): `authorize` o reconhece e o
+> libera nas rotas operacionais do estabelecimento ao qual o token
+> pertence (o tenant é sempre imposto pelo `establishmentId` do JWT — não
+> há vazamento entre clientes). A gestão **global** de clientes NÃO fica
+> nas rotas operacionais: é restrita ao router `/admin` pelo helper
+> estrito `authorizeSuperAdminOnly()` (nenhum outro papel passa, nem
+> ADMIN/MANAGER). Existe também `authorizeAdminOnly()` (estrito, só
+> ADMIN) para a gestão de equipe e para a exportação de backup
+> (`GET /export/csv` — ver "Exportação — Backup de Dados").
+
 | Papel | Acesso |
 |-------|--------|
+| `SUPER_ADMIN` | **Plataforma:** `GET/PATCH /admin/*` (listagem de clientes e reset de senha — único papel). Operacional: elevado como ADMIN/MANAGER do tenant do token |
 | `ADMIN` | Total (inclusive gestão de equipe e settings) |
 | `MANAGER` | Total nas rotas operacionais; na equipe, **lista** `GET /users` e **cria/edita** `POST /users` e `PUT\|PATCH /users/:id` — restrito a `WAITER`/`KITCHEN` (criar/editar `ADMIN`/`MANAGER` responde `403`) |
 | `WAITER` | Operação no seu escopo: mesas sem vínculo ou vinculadas a ele; pedidos, comandas e pagamentos |
@@ -103,6 +180,13 @@ continuam **ADMIN-only**. O service também mantém a proteção do dono
 Cadastro de novos restaurantes. Cria o `Establishment` e o `User` inicial
 (role `ADMIN`) atomicamente em **uma transação** (`$transaction`). O hash
 bcrypt é aplicado à senha do proprietário antes da persistência.
+
+> **FASE 26:** aplica o MESMO controle de onboarding do `/auth/register`
+> (e-mail precisa existir em `authorized_emails`, senão
+> `403 REGISTRATION_NOT_AUTHORIZED`; autorização consumida na transação).
+> Observação de segurança: desde a FASE 22 essa rota fica atrás do
+> `authenticate` global do `apiRouter` (não é pública de fato) — o gate
+> do serviço é defesa em profundidade para quem tiver token.
 
 Body:
 
@@ -145,7 +229,12 @@ Body:
 
 ## Usuários (Equipe)
 
-Roles: `ADMIN`, `MANAGER`, `WAITER`, `KITCHEN`.
+Roles da equipe: `ADMIN`, `MANAGER`, `WAITER`, `KITCHEN`.
+
+> **FASE 26:** o enum `UserRole` ganhou `SUPER_ADMIN` — papel **não
+> atribuível** por nenhum fluxo da API (nem `POST /users` nem onboarding
+> podem criá-lo). Reservado à administração da plataforma (cadastro de
+> `authorized_emails`, suspensão de clientes via `isActive`, etc.).
 
 CRUD da equipe **restrito a `ADMIN`** (FASE 18). `GET /users/me` continua
 acessível a qualquer role autenticada.
@@ -648,19 +737,202 @@ comanda encerrada.
 Rotas privadas. Acesso restrito a **MANAGER e ADMIN**.
 Multi-tenancy: `establishmentId` SEMPRE extraído do JWT.
 
-### GET `/dashboard/metrics`
+## Administração da Plataforma (SaaS — FASE 27)
 
-Métricas em tempo real do **dia atual** (fuso configurável via
-`DASHBOARD_TZ_OFFSET_MIN`, default `-180` = UTC-3):
+Rotas de **escopo GLOBAL** (não há tenant): gerenciam a base de clientes
+da plataforma. Auth: `authenticate` + `authorizeSuperAdminOnly()` aplicados
+a nível de router — **exclusivo de `SUPER_ADMIN`** (ADMIN/MANAGER/WAITER/
+KITCHEN respondem `403 FORBIDDEN`; sem token `401 AUTH_REQUIRED`).
+Mutações (POST/PATCH/DELETE) caem na auditoria global (FASE 22) com o
+campo `password` descartado do metadata (e-mail e `isActive` são dados
+não sensíveis e são registrados).
+
+> **Provisionamento do usuário `SUPER_ADMIN`:** não existe fluxo de API
+> para criá-lo (o onboarding cria apenas proprietários `ADMIN`).
+> É criado manualmente no banco (usuário `role: SUPER_ADMIN` vinculado a
+> um estabelecimento ativo — o login exige tenant ativo).
+
+### GET `/admin/establishments` — listagem de clientes
+
+Lista todos os clientes cadastrados (mais recentes primeiro) com o
+e-mail do usuário proprietário (role `ADMIN`) de cada um.
+
+**Resposta 200** (`data[]`):
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `id` | string (uuid) | Identificador do estabelecimento |
+| `name` | string | Nome do estabelecimento |
+| `slug` | string | Slug da URL pública do cardápio |
+| `status` | enum `EstablishmentStatus` | Estado do cadastro (`ACTIVE`...) |
+| `isActive` | boolean | Interruptor operacional SaaS (FASE 26 — suspensão) |
+| `createdAt` | string (ISO 8601) | Data de criação |
+| `ownerEmail` | string \| null | E-mail do usuário proprietário (ADMIN) |
+
+### PATCH `/admin/establishments/:id/password` — reset de senha do cliente
+
+Redefine a senha do **usuário proprietário (role `ADMIN`)** do cliente.
+O `:id` deve ser UUID válido; a senha segue a política do onboarding
+(mín. **6**, máx. 128 caracteres), é hash bcrypt (12 rodadas) e atualiza
+apenas o hash — o payload incluirá `password`, que é descartado da
+auditoria.
+
+**Body:**
+```json
+{ "password": "novaSenhaSegura123" }
+```
+
+**Respostas:**
+- `200` → `{ success: true, data: { message } }`
+- `400 VALIDATION_ERROR` — `:id` não-UUID ou senha fora da política
+  (ex.: `"A senha deve ter no mínimo 6 caracteres."`)
+- `404 ESTABLISHMENT_NOT_FOUND` — cliente inexistente
+- `404 CLIENT_OWNER_NOT_FOUND` — estabelecimento sem usuário proprietário
+- `403 FORBIDDEN` — role diferente de `SUPER_ADMIN`
+
+### POST `/admin/authorized-emails` — autorizar e-mail para onboarding
+
+Autoriza um e-mail a criar conta SaaS (`POST /auth/register` — sem
+autorização prévia o registro responde `403 REGISTRATION_NOT_AUTHORIZED`).
+A autorização é **consumida** (removida da tabela) quando o cliente
+conclui o cadastro; o e-mail volta a poder ser autorizado no futuro.
+
+**Body:**
+```json
+{ "email": "novo.cliente@exemplo.com" }
+```
+
+Validação: e-mail obrigatório, `trim` + minúsculas e formato válido
+(mesma normalização de login/registro — a autorização nunca existe em
+caixa diferente).
+
+**Respostas:**
+- `201 Created` → `{ success: true, data: { email, message } }`
+- `400 VALIDATION_ERROR` — e-mail ausente/em formato inválido
+- `409 EMAIL_ALREADY_AUTHORIZED` — e-mail já autorizado (a checagem é
+  case-insensitive e a corrida é coberta pelo `@unique` da tabela — nunca 500)
+- `403 FORBIDDEN` — role diferente de `SUPER_ADMIN`
+
+### PATCH `/admin/establishments/:id/status` — suspender/reativar cliente
+
+Suspende ou reativa o cliente pelo **interruptor operacional SaaS**
+(`isActive`, FASE 26). O efeito no login é imediato:
+
+- `isActive: false` → login responde `403 ESTABLISHMENT_SUSPENDED`
+  (clientes inadimplentes/suspensões administrativas);
+- `isActive: true` → acesso normal restaurado.
+
+A alteração é **idempotente** e não mexe em `status` (que reflete o
+cadastro); suspensão é decisão operacional reversível. O `:id` deve ser
+UUID válido e `isActive` deve ser **booleano estrito** (sem coerção —
+`"false"` é rejeitado).
+
+**Body:**
+```json
+{ "isActive": false }
+```
+
+**Respostas:**
+- `200` → `{ success: true, data: { id, name, slug, status, isActive, message } }`
+- `400 VALIDATION_ERROR` — `:id` não-UUID ou `isActive` ausente/não-booleano
+- `404 ESTABLISHMENT_NOT_FOUND` — cliente inexistente
+- `403 FORBIDDEN` — role diferente de `SUPER_ADMIN`
+
+### DELETE `/admin/establishments/:id` — exclusão definitiva de cliente (FASE 27)
+
+Remove **definitivamente** um cliente e TODOS os dados vinculados
+(usuários, áreas, mesas, sessões/comandas, categorias, produtos,
+adicionais, combos, promoções, clientes do cardápio, pedidos, itens,
+pagamentos). Operação **irreversível**. O `:id` deve ser UUID válido.
+
+**Como a exclusão é feita (importante):**
+
+- As relações de primeiro nível com `establishmentId` usam `onDelete:
+  Cascade` no schema e seriam capazes de limpar os dados sozinhas.
+- Porém, as relações **internas** (ex.: `OrderItem → Product`,
+  `Order → Table`, `TableSession → Table`, `Product → Category`) são
+  `RESTRICT` de propósito — preservam o **histórico de pedidos** (regra
+  de ouro #9) e um `RESTRICT` é avaliado imediatamente pelo PostgreSQL,
+  ANTES do cascade de topo, bloqueando o `establishment.delete` direto.
+- Por isso a exclusão roda em **uma transação** (`prisma.$transaction`)
+  que apaga primeiro os dependentes na ordem correta (itens de pedido e
+  seus adicionais, itens, pagamentos, pedidos, sessões, vínculos
+  produto↔adicionais, adicionais, grupos, produtos, categorias, mesas,
+  áreas, clientes do cardápio, combos, promoções) e, por fim,
+  `establishment.delete` — o cascade do banco limpa o restante (usuários).
+  Tudo ou nada: se qualquer passo falhar, nada é apagado (sem exclusão
+  parcial).
+- O `establishmentId` do ator **nunca** vem do cliente; e o ator **não
+  pode excluir o estabelecimento ao qual a própria conta pertence**
+  (`409 CANNOT_DELETE_OWN_ESTABLISHMENT` — proteção contra auto-lockout).
+
+**Histórico/auditoria:** os `AuditLog` da plataforma **sobrevivem** à
+exclusão (`onDelete: SetNull` — `user_id` dos logs do cliente vai a
+`NULL`), preservando a trilha de auditoria global. A própria exclusão é
+auditada (`action: DELETE /api/v1/admin/establishments/:id`,
+`entity: ADMIN`, `entityId: <id do cliente>`, ator = `SUPER_ADMIN`).
+
+**Respostas:**
+- `200` → `{ success: true, data: { id, name, message } }`
+  (`message`: `"Cliente excluído definitivamente."`)
+- `400 VALIDATION_ERROR` — `:id` não-UUID
+- `404 ESTABLISHMENT_NOT_FOUND` — cliente inexistente
+- `409 CANNOT_DELETE_OWN_ESTABLISHMENT` — ator pertence ao cliente alvo
+- `403 FORBIDDEN` — role diferente de `SUPER_ADMIN`
+- `401 AUTH_REQUIRED` — sem token
+
+> **Efeito na sessão vigente:** após a exclusão, usuários do cliente
+> deixam de existir — o login responde `401 INVALID_CREDENTIALS` e tokens
+> já emitidos passam a falhar em `GET /auth/me` com `401 SESSION_INVALID`.
+
+### GET `/dashboard/metrics` — métricas com período flexível (FASE 26)
+
+Métricas do dashboard. O período é **opcional** — sem parâmetros responde
+o dia atual (comportamento padrão). Três modos **exclusivos** (somente
+um por chamada, senão `400 VALIDATION_ERROR`):
+
+| Modo | Query params | Efeito |
+|------|--------------|--------|
+| Dia atual (padrão) | *(nenhum)* | Hoje no fuso do dashboard |
+| Período exato | `?startDate=...&endDate=...` | Intervalo de dias — ISO 8601 com offset (ex.: `2026-10-01T00:00:00Z`); ambos obrigatórios, `start < end` |
+| Mês inteiro | `?month=9&year=2026` | Mês no **fuso do dashboard** (UTC-3 default): de 01/09 00:00 até 30/09 23:59:59.999; `month` 1–12, `year` 2000–2100, ambos obrigatórios |
+
+Parâmetros incompletos ou misturados (ex.: `month` sem `year`, ou
+`startDate` junto de `month/year`) → `400 VALIDATION_ERROR`.
+
+A receita é **filtrada no Prisma** (`paidAt` dentro de `[start, end]`).
+As duas contagens (`activeSessionsCount`, `pendingOrdersCount`) são
+métricas de **estado ("agora")** da operação — não são afetadas pelo
+período. `period` reflete o intervalo efetivamente aplicado à receita.
+
+Fuso configurável via `DASHBOARD_TZ_OFFSET_MIN` (default `-180` = UTC-3).
 
 | Campo | Descrição |
 |-------|-----------|
-| `date` | Dia no fuso do dashboard (YYYY-MM-DD) |
-| `totalRevenueToday` | Soma dos pagamentos **PAID** do dia (mesma fonte da conciliação do fechamento) |
-| `activeSessionsCount` | Comandas **OPEN** (mesa em BILL_REQUESTED continua sessão aberta → contabilizada) |
-| `pendingOrdersCount` | Fila da operação: PENDING + CONFIRMED + PREPARING |
+| `date` | Rótulo do início do período no fuso do dashboard (YYYY-MM-DD) |
+| `period` | `{ startDate, endDate }` aplicados à receita (ISO 8601, fim inclusivo) |
+| `timezoneOffsetMinutes` | Fuso usado (default -180) |
+| `totalRevenueToday` | Soma dos pagamentos **PAID** do período (mesma fonte da conciliação do fechamento) |
+| `activeSessionsCount` | Comandas **OPEN** no momento (mesa em BILL_REQUESTED continua sessão aberta → contabilizada) |
+| `pendingOrdersCount` | Fila atual da operação: PENDING + CONFIRMED + PREPARING |
 
-Erros: `AUTH_REQUIRED`, `FORBIDDEN`.
+Exemplo de resposta (mês inteiro):
+
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2026-09-01",
+    "timezoneOffsetMinutes": -180,
+    "period": { "startDate": "2026-09-01T03:00:00.000Z", "endDate": "2026-10-01T02:59:59.999Z" },
+    "totalRevenueToday": 2450.75,
+    "activeSessionsCount": 12,
+    "pendingOrdersCount": 4
+  }
+}
+```
+
+Erros: `AUTH_REQUIRED`, `FORBIDDEN`, `VALIDATION_ERROR` (400).
 
 ### GET `/dashboard/sales?startDate&endDate`
 
@@ -756,6 +1028,85 @@ routers administrativos (rotas públicas `/auth` e `/public/*` ficam fora).
 - Fire-and-forget (`catch`): falha de gravação **nunca** derruba a requisição;
 - Multi-tenancy: o log não copia `establishmentId` — a listagem resolve o
   tenant via `AuditLog.user.establishmentId`.
+
+## Exportação — Backup de Dados (FASE 28)
+
+Rota privada de **download**. Acesso restrito a **ADMIN** via
+`authorizeAdminOnly()` — **exceção explícita** ao acesso irrestrito de
+`ADMIN`/`MANAGER` (`ELEVATED_ROLES`): o backup carrega dados de **equipe**
+(e-mails/papéis) e a configuração completa do estabelecimento, por isso
+**NÃO** é liberado a MANAGER/WAITER/KITCHEN. Multi-tenancy: o
+`establishmentId` vem SEMPRE do JWT (nunca de query/body).
+
+### GET `/export/csv` — backup estrutural do estabelecimento
+
+Gera um **CSV consolidado em seções** com os dados estruturais (cadastro e
+configuração) do estabelecimento autenticado. A resposta é um **download
+direto** (o navegador não renderiza):
+
+- `Content-Type: text/csv; charset=utf-8`
+- `Content-Disposition: attachment; filename="backup-dados.csv"`
+
+> **CORS (leitura do nome do arquivo):** o middleware `cors` em `app.ts`
+> expõe o header de resposta via `Access-Control-Expose-Headers:
+> Content-Disposition`, para que o frontend consiga extrair `filename` em
+> requisições cross-origin. Sem isso, o navegador esconde o header e o
+> frontend usa o fallback fixo (o mesmo nome, `backup-dados.csv`).
+
+**Formato** (padrão compartilhado `common/utils/csv.ts` — o mesmo da
+exportação de vendas, revisado na FASE 28):
+
+- delimitador de coluna `;` (Excel pt-BR);
+- campos com `;`, `"` ou quebra de linha entre aspas duplas, aspas internas
+  dobradas (RFC 4180 adaptado);
+- BOM UTF-8 (`\uFEFF`) no início;
+- linhas com CRLF.
+
+**Estrutura do ficheiro** — cada seção começa com uma linha `# Título` e as
+seções são separadas por uma linha em branco (o Excel abre tudo numa única
+folha):
+
+| Seção | Colunas |
+|-------|---------|
+| `# Estabelecimento` | Nome, Slug, Telefone, WhatsApp, Endereço, Cidade, Estado, CEP, Taxa de serviço ativa (Sim/Não), Taxa de serviço (%), Formas de pagamento (`\|` entre valores), Cadastrado em |
+| `# Equipe` | ID, Nome, E-mail, Função, Telefone, Ativo (Sim/Não), Cadastrado em |
+| `# Áreas` | ID, Nome, Descrição, Ativo (Sim/Não), Cadastrado em |
+| `# Mesas` | ID, Número, Nome, Área, Capacidade, Status, Ativo (Sim/Não), QR Code, Cadastrado em |
+| `# Categorias` | ID, Nome, Descrição, Ordem, Ativo (Sim/Não), Cadastrado em |
+| `# Produtos` | ID, Nome, Categoria, Descrição, Preço, Preço promocional, Tempo de preparo (min), Ingredientes, Alergénios, Ordem, Destaque (Sim/Não), Ativo (Sim/Não), Disponível (Sim/Não), Cadastrado em |
+
+- **Ordem dentro de cada seção:** Equipe por `createdAt` asc; Áreas por
+  nome; Mesas por número; Categorias por `displayOrder` e depois nome;
+  Produtos por nome.
+- **Nunca exporta `passwordHash`** nem qualquer credencial.
+- Datas em ISO 8601 (UTC); valores monetários/percentuais com 2 casas
+  decimais (ponto como separador); booleanos como `Sim`/`Não`.
+- **Escopo:** apenas dados **estruturais** (o que o cliente cadastrou).
+  Dados operacionais/históricos (pedidos, comandas, pagamentos, auditoria)
+  **não** entram — as vendas já têm exportação própria em
+  `GET /dashboard/sales/export`.
+- Leitura em **uma única transação** (`$transaction`) — snapshot consistente
+  das tabelas (evita exportação "rasgada").
+- Estabelecimento sem registos numa seção → apenas o cabeçalho da seção.
+
+**Exemplo (trecho):**
+
+```csv
+# Estabelecimento
+Nome;Slug;…;Taxa de serviço ativa;…
+Balneário Praia Azul;praia-azul;…;Sim;…
+
+# Equipe
+ID;Nome;E-mail;Função;…
+…;"Garçom; Teste";…;WAITER;…
+```
+
+**Respostas:**
+
+- `200` → ficheiro CSV (`backup-dados.csv`)
+- `401 AUTH_REQUIRED` — sem token
+- `403 FORBIDDEN` — role diferente de `ADMIN` (**inclui MANAGER**, que é
+  papel elevado nas rotas operacionais, mas não aqui)
 
 ## WebSocket (Realtime)
 

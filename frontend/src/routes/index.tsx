@@ -4,6 +4,7 @@ import { ProtectedRoute } from '../components/ProtectedRoute.js';
 import { AdminLayout } from '../layouts/AdminLayout.js';
 import { KitchenLayout } from '../layouts/KitchenLayout.js';
 import { PublicLayout } from '../layouts/PublicLayout.js';
+import { SuperAdminLayout } from '../layouts/SuperAdminLayout.js';
 import { WaiterLayout } from '../layouts/WaiterLayout.js';
 import { LoginPage } from '../pages/Login.js';
 import { RegisterPage } from '../pages/public/Register.js';
@@ -20,6 +21,7 @@ import { DesignSystemPage } from '../pages/design/DesignSystemPage.js';
 import { KitchenPage } from '../pages/kitchen/KitchenPage.js';
 import { MenuPage } from '../pages/menu/MenuPage.js';
 import { NotFoundPage } from '../pages/NotFoundPage.js';
+import { PlatformEstablishmentsPage } from '../pages/superAdmin/Establishments.js';
 import { WaiterPage } from '../pages/waiter/WaiterPage.js';
 
 /**
@@ -27,13 +29,15 @@ import { WaiterPage } from '../pages/waiter/WaiterPage.js';
  *  - Cliente: /menu/:establishmentSlug e /table/:token (mobile-first, aberto)
  *  - Auth:    /login (público; redireciona para a home do papel se logado)
  *  - Admin:   /admin/* (ADMIN/MANAGER)
+ *  - Plataforma: /super-admin (exclusivo SUPER_ADMIN — FASE 27)
  *  - Operação: /kitchen (KITCHEN/ADMIN/MANAGER) e /waiter (WAITER/ADMIN/MANAGER)
  *  - Dev:     /dev/design-system (showcase dos tokens/componentes)
  *
  * Papéis permitidos por área (espelha o authorize do backend):
  *  - Admin/Manager gerenciam tudo;
  *  - Waiter não acessa /admin (é redirecionado a /waiter pelo ProtectedRoute);
- *  - Kitchen não acessa /admin nem /waiter.
+ *  - Kitchen não acessa /admin nem /waiter;
+ *  - SUPER_ADMIN acessa /super-admin (rota global de plataforma).
  */
 const ADMIN_ROLES = ['ADMIN', 'MANAGER'] as const;
 const OPERATION_ROLES = ['ADMIN', 'MANAGER'] as const;
@@ -92,6 +96,20 @@ export function AppRoutes() {
         }
       >
         <Route index element={<KitchenPage />} />
+      </Route>
+
+      {/* Plataforma (FASE 27) — exclusivo SUPER_ADMIN. O backend reforça a
+          RBAC estrita: GET/PATCH /admin/* respondem 403 para qualquer outro
+          papel (nem ADMIN/MANAGER passam). */}
+      <Route
+        path="/super-admin"
+        element={
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+            <SuperAdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<PlatformEstablishmentsPage />} />
       </Route>
       <Route
         path="/waiter"

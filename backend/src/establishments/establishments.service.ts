@@ -45,10 +45,29 @@ function normalizeSettings<T extends { serviceFeeRate: unknown }>(settings: T) {
  * interativo nenhuma operação assíncrona externa é executada, e a senha em
  * texto puro nunca é passada adiante.
  *
+ * FASE 26 — controle de SaaS: o e-mail precisa estar em `AuthorizedEmail`
+ * (403 REGISTRATION_NOT_AUTHORIZED caso contrário) e a autorização é
+ * consumida na mesma transação. Controle idêntico ao POST /auth/register —
+ * impede que esta rota legada contorne o onboarding controlado.
+ *
  * Conflitos de slug/e-mail (unicidade global) retornam 409
  * (`SLUG_ALREADY_IN_USE` / `EMAIL_ALREADY_IN_USE`).
  */
 export async function registerEstablishment(input: RegisterEstablishmentInput) {
+  // FASE 26 — somente e-mails autorizados pela administração criam conta.
+  const authorized = await prisma.authorizedEmail.findUnique({
+    where: { email: input.ownerEmail },
+    select: { id: true },
+  });
+
+  if (!authorized) {
+    throw new AppError(
+      403,
+      'REGISTRATION_NOT_AUTHORIZED',
+      'Cadastro não autorizado pela administração.',
+    );
+  }
+
   // Pré-checagem para mensagens precisas. O catch de P2002 abaixo cobre
   // corridas entre a checagem e a criação.
   const [slugInUse, emailInUse] = await Promise.all([
@@ -105,6 +124,11 @@ export async function registerEstablishment(input: RegisterEstablishmentInput) {
           active: true,
           createdAt: true,
         },
+      });
+
+      // Consome a autorização de onboarding (FASE 26): atômico com a criação.
+      await tx.authorizedEmail.deleteMany({
+        where: { email: input.ownerEmail },
       });
 
       return { establishment, owner };

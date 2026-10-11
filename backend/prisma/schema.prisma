@@ -31,6 +31,8 @@ enum UserRole {
   MANAGER
   WAITER
   KITCHEN
+  // FASE 26 — papel de supervisão global da plataforma (SaaS).
+  SUPER_ADMIN
 }
 
 enum TableStatus {
@@ -100,6 +102,10 @@ model Establishment {
   state       String?
   zipCode     String?
   status      EstablishmentStatus  @default(ACTIVE)
+  // FASE 26 — controle de SaaS: bloqueia clientes inadimplentes.
+  // `status` reflete o cadastro; `isActive` é o interruptor operacional
+  // usado no login (estabelecimento suspenso responde 403 ao entrar).
+  isActive  Boolean                @default(true) @map("is_active")
   // Taxa de serviço — configuração do estabelecimento (FASE 8)
   serviceFeeEnabled Boolean         @default(false) @map("service_fee_enabled")
   serviceFeeRate    Decimal         @default(0)     @map("service_fee_rate") @db.Decimal(5, 2)
@@ -553,4 +559,17 @@ model AuditLog {
   @@index([entity])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================
+// AuthorizedEmail — FASE 26 (controle de onboarding SaaS)
+// ============================================================
+
+model AuthorizedEmail {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("authorized_emails")
 }

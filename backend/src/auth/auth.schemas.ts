@@ -7,8 +7,15 @@ import { z } from 'zod';
  * e normalizado aqui antes de qualquer consulta ou regra de negócio.
  */
 
-/** E-mail com normalização: trim + minúsculas (compartilhado por login e registro). */
-const emailSchema = z
+/**
+ * E-mail com normalização: trim + minúsculas.
+ *
+ * Compartilhado por login/registro (FASE 25) e REUTILIZADO na FASE 27 pelo
+ * `POST /admin/authorized-emails` (autorização de onboarding pelo
+ * SUPER_ADMIN) — a normalização é a MESMA em toda a plataforma, garantindo
+ * que uma autorização concedida nunca exista em caixa diferente.
+ */
+export const emailSchema = z
   .string('E-mail é obrigatório.')
   .trim()
   .toLowerCase()
@@ -58,10 +65,14 @@ const slugSchema = z
   );
 
 /**
- * Senha de onboarding (FASE 25): mínimo 6 caracteres, conforme o
- * contrato do registro SaaS. Máximo 128 limita custo do hash bcrypt.
+ * Política de senha de credenciais de cliente SaaS (FASE 25): mínimo de 6
+ * caracteres, máximo 128 (limita o custo do hash bcrypt).
+ *
+ * REUTILIZADA na FASE 27 pelo reset do SUPER_ADMIN
+ * (`PATCH /admin/establishments/:id/password`), que recebe a nova senha
+ * do proprietário com os MESMOS critérios de segurança do onboarding.
  */
-const registerPasswordSchema = z
+export const registerPasswordSchema = z
   .string('Senha é obrigatória.')
   .min(6, 'A senha deve ter no mínimo 6 caracteres.')
   .max(128, 'A senha deve ter no máximo 128 caracteres.');

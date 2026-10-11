@@ -85,12 +85,41 @@ function optionalEnv(name: string): string | undefined {
   return value === undefined || value.trim() === '' ? undefined : value;
 }
 
+/**
+ * Origens permitidas pelo CORS, separadas por vírgula em `CORS_ORIGIN`
+ * (ex.: "http://localhost:5173,http://127.0.0.1:5173").
+ *
+ * - leitura TOLERANTE: valores são aparados e entradas vazias ignoradas;
+ * - fallback de desenvolvimento: quando a variável está ausente ou não
+ *   produz nenhuma origem, assume localhost E 127.0.0.1 — cobre a
+ *   divergência comum de resolução de IP entre Node e Vite (o navegador
+ *   pode abrir a SPA em 127.0.0.1 mesmo com o Vite escutando em localhost);
+ * - o backend continua sendo a autoridade: origens fora da lista são
+ *   negadas pelo middleware de CORS (403 CORS_ORIGIN_NOT_ALLOWED).
+ */
+const DEVELOPMENT_CORS_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'] as const;
+
+function parseCorsOrigins(name: string): readonly string[] {
+  const raw = process.env[name]?.trim();
+
+  if (!raw) {
+    return DEVELOPMENT_CORS_ORIGINS;
+  }
+
+  const origins = raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return origins.length > 0 ? origins : DEVELOPMENT_CORS_ORIGINS;
+}
+
 loadLocalEnv();
 
 export const env = {
   nodeEnv: parseNodeEnv('NODE_ENV'),
   port: parsePort('PORT'),
-  corsOrigin: requireEnv('CORS_ORIGIN'),
+  corsOrigins: parseCorsOrigins('CORS_ORIGIN'),
   databaseUrl: requireEnv('DATABASE_URL'),
   // Autenticação JWT — secret obrigatório em qualquer ambiente.
   jwtSecret: requireEnv('JWT_SECRET'),

@@ -15,7 +15,9 @@ const sizeClasses: Record<AvatarSize, string> = {
   lg: 'size-12 text-base',
 };
 
-function initialsOf(name: string): string {
+/** Iniciais do nome (1ª letra do primeiro + 1ª do último termo). Exportada
+ * para reuso na marca do estabelecimento (fallback sem logo). */
+export function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? '';
   const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';

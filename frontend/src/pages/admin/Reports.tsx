@@ -18,52 +18,10 @@ import { Tabs } from '../../components/ui/Tabs.js';
 import { useToast } from '../../components/ui/Toast.js';
 import { ApiError } from '../../services/api.js';
 import { exportSalesCsv, getAuditLogs } from '../../services/reports.js';
-
-/** "YYYY-MM-DD" no fuso local do dispositivo (ex.: hoje no operador). */
-function toDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { downloadBlob } from '../../utils/download.js';
+import { toDateInput, toIsoLocal } from '../../utils/time.js';
 
 const TODAY = toDateInput(new Date());
-
-/**
- * Converte "YYYY-MM-DD" (input date) em ISO 8601 com offset local.
- * O backend exige datetime com offset (schema .datetime({ offset: true })) e
- * compara com closedAt (UTC). Usar o fuso do dispositivo preserva o sentido
- * de "dia" para o operador (balneário gerencia no fuso local).
- */
-function toIsoLocal(dateInput: string, endOfDay: boolean): string {
-  const [yearRaw, monthRaw, dayRaw] = dateInput.split('-');
-  const year = Number(yearRaw);
-  const month = Number(monthRaw);
-  const day = Number(dayRaw);
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    endOfDay ? 23 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 999 : 0,
-  );
-  return date.toISOString();
-}
-
-/** Dispara o download de um Blob via objectURL + <a> invisível. */
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
-}
 
 /**
  * Validação local do período (espelha o contrato do backend).

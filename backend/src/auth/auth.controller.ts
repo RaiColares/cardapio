@@ -2,7 +2,11 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { AppError } from '../common/errors/AppError.js';
 import { loginSchema, registerSchema } from './auth.schemas.js';
-import { loginWithCredentials, registerEstablishmentWithOwner } from './auth.service.js';
+import {
+  getCurrentUser,
+  loginWithCredentials,
+  registerEstablishmentWithOwner,
+} from './auth.service.js';
 
 /**
  * POST /api/v1/auth/login
@@ -61,6 +65,33 @@ export async function registerController(
     const result = await registerEstablishmentWithOwner(parsed.data);
 
     res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/auth/me
+ *
+ * Retorna o usuário autenticado e o BRANDING do estabelecimento ao qual
+ * pertence (`name` e `logoUrl`). Requer token válido (`authenticate`) —
+ * a rota é montada antes do `authenticate` global, então aplica o
+ * middleware explicitamente.
+ */
+export async function meController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const user = req.user;
+
+    if (!user) {
+      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
+    }
+
+    const data = await getCurrentUser(user.userId);
+    res.json({ success: true, data });
   } catch (error) {
     next(error);
   }

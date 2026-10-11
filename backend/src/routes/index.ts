@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { adminRouter } from '../admin/admin.routes.js';
 import { areasRouter } from '../areas/areas.routes.js';
 import { authRouter } from '../auth/auth.routes.js';
 import { categoriesRouter } from '../categories/categories.routes.js';
@@ -7,6 +8,7 @@ import { auditMiddleware } from '../common/middlewares/audit.js';
 import { authenticate } from '../common/middlewares/authenticate.js';
 import { dashboardRouter } from '../dashboard/dashboard.routes.js';
 import { establishmentsRouter } from '../establishments/establishments.routes.js';
+import { exportRouter } from '../export/export.routes.js';
 import { modifierGroupsRouter } from '../modifier-groups/modifier-groups.routes.js';
 import { modifiersRouter } from '../modifiers/modifiers.routes.js';
 import { ordersRouter } from '../orders/orders.routes.js';
@@ -43,6 +45,11 @@ apiRouter.use('/public', publicRouter);
 apiRouter.use(authenticate);
 apiRouter.use(auditMiddleware);
 
+// FASE 27 — administração da PLATAFORMA SaaS (exclusivo SUPER_ADMIN).
+// Montado depois do `authenticate` global: o router reforça a RBAC
+// estrita (authorizeSuperAdminOnly) internamente.
+apiRouter.use('/admin', adminRouter);
+
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/establishments', establishmentsRouter);
 apiRouter.use('/dashboard', dashboardRouter);
@@ -56,3 +63,5 @@ apiRouter.use('/orders', ordersRouter);
 apiRouter.use('/table-sessions', tableSessionsRouter);
 apiRouter.use('/', paymentsRouter);
 apiRouter.use('/reports', reportsRouter);
+// FASE 28 — exportação de backup estrutural do cliente (ADMIN-only).
+apiRouter.use('/export', exportRouter);

@@ -6,7 +6,7 @@
  * exibidos nunca são calculados como verdade no frontend.
  */
 
-export type Role = 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN';
+export type Role = 'ADMIN' | 'MANAGER' | 'WAITER' | 'KITCHEN' | 'SUPER_ADMIN';
 
 /** Usuário autenticado, conforme resposta de POST /auth/login. */
 export interface AuthUser {
@@ -15,6 +15,20 @@ export interface AuthUser {
   email: string;
   role: Role;
   establishmentId: string;
+}
+
+/**
+ * Branding do estabelecimento do usuário logado.
+ *
+ * Faz parte do contrato de sessão: chega no `POST /auth/login` e no
+ * `GET /auth/me` (FASE 27). Alimenta a marca dos layouts (nome + logo),
+ * com fallback para as iniciais do nome quando não há logo.
+ */
+export interface AuthEstablishment {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
 }
 
 export interface Establishment {
@@ -87,9 +101,18 @@ export interface Order {
    contratos do backend (categorias, produtos, dashboard).
    ============================================================ */
 
+export interface DashboardMetricsPeriod {
+  /** Início do período efetivamente aplicado à receita (ISO 8601). */
+  startDate: string;
+  /** Fim do período (inclusivo, ISO 8601). */
+  endDate: string;
+}
+
 export interface DashboardMetrics {
   date: string; // YYYY-MM-DD no fuso do dashboard
   timezoneOffsetMinutes: number;
+  /** FASE 26 — intervalo aplicado à receita; ausente em respostas antigas. */
+  period?: DashboardMetricsPeriod;
   totalRevenueToday: number;
   activeSessionsCount: number;
   pendingOrdersCount: number;
@@ -488,6 +511,23 @@ export interface EstablishmentSettings {
 
 /** Roles gerenciáveis pela equipe (ADMIN nasce apenas no onboarding). */
 export type TeamRole = 'MANAGER' | 'WAITER' | 'KITCHEN';
+
+/**
+ * Cliente da plataforma, conforme GET /admin/establishments (FASE 27).
+ * Endpoint EXCLUSIVO do SUPER_ADMIN — escopo global (não há tenant).
+ */
+export interface PlatformClient {
+  id: string;
+  name: string;
+  slug: string;
+  /** Estado do cadastro (`ACTIVE` | `INACTIVE`). */
+  status: EstablishmentStatus;
+  /** Interruptor operacional SaaS (FASE 26) — suspenso = `false`. */
+  isActive: boolean;
+  createdAt: string;
+  /** E-mail do usuário proprietário (role ADMIN); null se ausente. */
+  ownerEmail: string | null;
+}
 
 /** Membro da equipe, conforme GET /users (nunca inclui passwordHash). */
 export interface TeamUser {

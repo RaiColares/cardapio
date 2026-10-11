@@ -1,7 +1,8 @@
 import { prisma } from '../common/prisma/prisma.js';
+import type { MetricsQueryInput } from './dashboard.schemas.js';
 
 /**
- * Service do Dashboard (métricas do dia + relatório de vendas).
+ * Service do Dashboard (métricas + relatório de vendas).
  *
  * Todas as métricas são calculadas em tempo real sobre os dados
  * persistidos (autoridade do servidor) e escopadas pelo
@@ -24,10 +25,9 @@ export function todayRange() {
   return { start, end };
 }
 
-/** Rótulo do dia (YYYY-MM-DD) no fuso do dashboard. */
-function dayLabel(): string {
-  const now = new Date(Date.now() + TZ_OFFSET_MIN * 60_000);
-  return now.toISOString().slice(0, 10);
+/** Rótulo do dia (YYYY-MM-DD) no fuso do dashboard, para um instante dado. */
+function dayLabel(at: Date): string {
+  return new Date(at.getTime() + TZ_OFFSET_MIN * 60_000).toISOString().slice(0, 10);
 }
 
 function round2(value: number): number {
@@ -38,25 +38,70 @@ function round2(value: number): number {
 // GET /dashboard/metrics
 // ---------------------------------------------------------------
 
+/** Período efetivo das métricas (fim INCLUSIVO). */
+export interface MetricsPeriod {
+  start: Date;
+  end: Date;
+}
+
 /**
- * Métricas em tempo real do dia atual:
+ * Resolve o período das métricas a partir dos query params (FASE 26):
  *
- * - totalRevenueToday: soma dos pagamentos PAID do dia (receita
- *   conciliada — mesma fonte usada no fechamento da comanda);
- * - activeSessionsCount: comandas abertas (não encerradas). A mesa
- *   em BILL_REQUESTED continua com sessão OPEN até o fechamento,
- *   portanto está contabilizada aqui;
- * - pendingOrdersCount: fila da operação (a fazer pela cozinha).
+ * - `startDate`/`endDate` (ISO 8601): período exato de dias — o cliente
+ *   controla os instantes (o rótulo `date` renderiza o início no fuso do
+ *   dashboard; envie datas com offset -03:00 para casar com o dia local);
+ * - `month`/`year` (numéricos): mês inteiro no FUSO do dashboard —
+ *   primeiro dia à meia-noite local e último instante do mês (assim
+ *   "setembro" é de 01/09 00:00 até 30/09 23:59:59.999 no fuso do
+ *   estabelecimento);
+ * - sem parâmetros: dia atual (comportamento padrão/legado).
  */
-export async function getMetrics(establishmentId: string) {
+function resolvePeriod(query: MetricsQueryInput): MetricsPeriod {
+  if (query.startDate !== undefined && query.endDate !== undefined) {
+    return {
+      start: new Date(query.startDate),
+      end: new Date(query.endDate),
+    };
+  }
+
+  if (query.month !== undefined && query.year !== undefined) {
+    // Meia-noite local do dia 1 e meia-noite local do dia 1 do mês
+    // seguinte (o "dia 0" do mês seguinte é o último dia deste mês).
+    return {
+      start: new Date(Date.UTC(query.year, query.month - 1, 1) - TZ_OFFSET_MIN * 60_000),
+      end: new Date(Date.UTC(query.year, query.month, 1) - TZ_OFFSET_MIN * 60_000 - 1),
+    };
+  }
+
   const { start, end } = todayRange();
+  return { start, end: new Date(end.getTime() - 1) };
+}
+
+/**
+ * Métricas do dashboard, com período flexível (FASE 26):
+ *
+ * - totalRevenueToday: soma dos pagamentos PAID do período (receita
+ *   conciliada — mesma fonte usada no fechamento da comanda), filtrada
+ *   por `paidAt` dentro do intervalo [start, end];
+ * - activeSessionsCount: comandas ABERTAS no momento. É uma métrica de
+ *   ESTADO ("agora"), não de intervalo — por isso não é filtrada pelo
+ *   período (uma comanda aberta hoje não deixa de existir se você
+ *   consultar o mês anterior);
+ * - pendingOrdersCount: fila atual da operação (a fazer pela cozinha).
+ *   Também é um retrato do presente, independente do período consultado.
+ *
+ * `period` devolve o intervalo efetivamente aplicado à receita, para o
+ * cliente saber exatamente o que foi considerado.
+ */
+export async function getMetrics(establishmentId: string, query: MetricsQueryInput = {}) {
+  const period = resolvePeriod(query);
 
   const [revenue, activeSessions, pendingOrders] = await Promise.all([
     prisma.payment.aggregate({
       where: {
         tableSession: { establishmentId },
         status: 'PAID',
-        paidAt: { gte: start, lt: end },
+        paidAt: { gte: period.start, lte: period.end },
       },
       _sum: { amount: true },
     }),
@@ -72,8 +117,12 @@ export async function getMetrics(establishmentId: string) {
   ]);
 
   return {
-    date: dayLabel(),
+    date: dayLabel(period.start),
     timezoneOffsetMinutes: TZ_OFFSET_MIN,
+    period: {
+      startDate: period.start.toISOString(),
+      endDate: period.end.toISOString(),
+    },
     totalRevenueToday: round2(Number(revenue._sum.amount ?? 0)),
     activeSessionsCount: activeSessions,
     pendingOrdersCount: pendingOrders,

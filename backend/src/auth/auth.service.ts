@@ -12,9 +12,12 @@ import type { LoginInput, RegisterInput } from './auth.schemas.js';
  * Regras de negócio:
  * 1. usuário deve existir (buscado por e-mail normalizado);
  * 2. usuário deve estar ativo;
- * 3. estabelecimento deve estar ativo;
+ * 3. estabelecimento deve estar ativo (`status`) e NÃO suspenso
+ *    (`isActive` — FASE 26: controle de SaaS/inadimplência);
  * 4. senha deve corresponder ao hash armazenado;
- * 5. payload do token: { sub: userId, establishmentId, role }.
+ * 5. payload do token: { sub: userId, establishmentId, role };
+ * 6. BRANDING: a resposta inclui o estabelecimento do usuário com `name` e
+ *    `logoUrl` (e `id`/`slug`), para o painel exibir a marca já no login.
  *
  * Falhas de credenciais usam mensagem genérica para não revelar
  * se o e-mail existe ou não (evita enumeração de usuários).
@@ -37,11 +40,28 @@ export async function loginWithCredentials(input: LoginInput) {
 
   const establishment = await prisma.establishment.findUnique({
     where: { id: user.establishmentId },
-    select: { status: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      logoUrl: true,
+      status: true,
+      isActive: true,
+    },
   });
 
   if (!establishment || establishment.status !== 'ACTIVE') {
     throw new AppError(403, 'ESTABLISHMENT_INACTIVE', 'Estabelecimento inativo.');
+  }
+
+  // FASE 26 — suspensão de clientes inadimplentes: o interruptor operacional
+  // `isActive` bloqueia o acesso mesmo com credenciais corretas.
+  if (establishment.isActive === false) {
+    throw new AppError(
+      403,
+      'ESTABLISHMENT_SUSPENDED',
+      'Estabelecimento suspenso ou inativo. Entre em contato com o suporte.',
+    );
   }
 
   const passwordMatches = await verifyPassword(input.password, user.passwordHash);
@@ -65,6 +85,65 @@ export async function loginWithCredentials(input: LoginInput) {
       role: user.role,
       establishmentId: user.establishmentId,
     },
+    // BRANDING (FASE 27): marca do estabelecimento disponível já no login.
+    establishment: {
+      id: establishment.id,
+      name: establishment.name,
+      slug: establishment.slug,
+      logoUrl: establishment.logoUrl,
+    },
+  };
+}
+
+/**
+ * GET /auth/me
+ *
+ * Dados do usuário autenticado + BRANDING do estabelecimento ao qual ele
+ * pertence (`name` e `logoUrl`, além de `id`/`slug`). Disponível para
+ * QUALQUER papel autenticado — é a sessão do painel (identidade + marca),
+ * diferente de `GET /establishments/me`, que expõe as configurações
+ * (ADMIN/MANAGER).
+ *
+ * O `userId` vem SEMPRE do token (nunca do cliente). Se o usuário OU o
+ * estabelecimento não existir mais (ex.: exclusão definitiva pelo
+ * SUPER_ADMIN), responde 401 SESSION_INVALID: o token deixa de valer.
+ */
+export async function getCurrentUser(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      establishmentId: true,
+    },
+  });
+
+  const establishment = user
+    ? await prisma.establishment.findUnique({
+        where: { id: user.establishmentId },
+        select: { id: true, name: true, slug: true, logoUrl: true },
+      })
+    : null;
+
+  if (!user || !establishment) {
+    throw new AppError(
+      401,
+      'SESSION_INVALID',
+      'Sessão inválida. Faça login novamente.',
+    );
+  }
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      establishmentId: user.establishmentId,
+    },
+    establishment,
   };
 }
 
@@ -87,6 +166,11 @@ const DEFAULT_ACCEPTED_PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', '
  * proprietário (role `ADMIN`) atomicamente em UMA transação.
  *
  * Regras de negócio:
+ * 0. FASE 26 — onboarding controlado pela administração: o e-mail deve
+ *    existir em `AuthorizedEmail`. Sem autorização prévia, responde 403
+ *    REGISTRATION_NOT_AUTHORIZED. Com o registro concluído, a autorização
+ *    é CONSUMIDA (o e-mail é removido da tabela) na MESMA transação —
+ *    assim uma autorização nunca gera duas contas;
  * 1. `slug` (estabelecimento) é globalmente único — conflito responde 400;
  * 2. `email` (usuário) é globalmente único — conflito responde 400;
  * 3. a senha recebe hash bcrypt ANTES da transação (nunca passa em texto
@@ -105,6 +189,20 @@ const DEFAULT_ACCEPTED_PAYMENT_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', '
  * janela entre a pré-checagem e o `create`, respondendo 400 no lugar de 500.
  */
 export async function registerEstablishmentWithOwner(input: RegisterInput) {
+  // 0) FASE 26 — somente e-mails autorizados pela administração criam conta.
+  const authorized = await prisma.authorizedEmail.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  });
+
+  if (!authorized) {
+    throw new AppError(
+      403,
+      'REGISTRATION_NOT_AUTHORIZED',
+      'Cadastro não autorizado pela administração.',
+    );
+  }
+
   const [slugInUse, emailInUse] = await Promise.all([
     prisma.establishment.findUnique({
       where: { slug: input.slug },
@@ -154,6 +252,11 @@ export async function registerEstablishmentWithOwner(input: RegisterInput) {
           active: true,
         },
         select: { id: true },
+      });
+
+      // Consome a autorização de onboarding (FASE 26): atômico com a criação.
+      await tx.authorizedEmail.deleteMany({
+        where: { email: input.email },
       });
     });
 

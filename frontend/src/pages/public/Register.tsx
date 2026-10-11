@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { Waves } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -13,6 +13,7 @@ import { useToast } from '../../components/ui/Toast.js';
 import { ApiError } from '../../services/api.js';
 import { registerEstablishment } from '../../services/establishments.js';
 import { homeForRole, useAuthStore } from '../../stores/authStore.js';
+import { slugify } from '../../utils/slug.js';
 
 /**
  * Validação espelha estritamente o registerSchema do backend (FASE 25):
@@ -77,6 +78,8 @@ export function RegisterPage() {
     register,
     handleSubmit,
     setError,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerFormSchema),
@@ -90,6 +93,21 @@ export function RegisterPage() {
     mode: 'onBlur',
   });
 
+  // FASE 26 — auto-slug: enquanto o usuário NÃO editar o slug manualmente,
+  // cada mudança no nome gera um slug amigável (minúsculas, sem acentos,
+  // espaços → hífens). A primeira edição manual desativa a sincronização.
+  const slugManuallyEdited = useRef(false);
+  const establishmentName = watch('establishmentName');
+  const currentSlug = watch('slug');
+  const slugField = register('slug');
+
+  useEffect(() => {
+    if (slugManuallyEdited.current) return;
+    const generated = slugify(establishmentName);
+    if (!generated || generated === currentSlug) return;
+    setValue('slug', generated, { shouldValidate: false, shouldDirty: true });
+  }, [establishmentName, currentSlug, setValue]);
+
   const registerMutation = useMutation({
     mutationFn: registerEstablishment,
     onSuccess: () => {
@@ -101,6 +119,10 @@ export function RegisterPage() {
     },
     onError: (error: unknown) => {
       if (error instanceof ApiError) {
+        if (error.code === 'REGISTRATION_NOT_AUTHORIZED') {
+          showToast('error', 'E-mail não autorizado para cadastro na plataforma.');
+          return;
+        }
         if (error.code === 'SLUG_ALREADY_IN_USE') {
           setError('slug', { message: error.message });
           return;
@@ -161,13 +183,17 @@ export function RegisterPage() {
             <Input
               id="register-slug"
               label="URL do cardápio (slug)"
-              hint="Apenas letras minúsculas, números e hífen — ex.: balneario-praia-azul"
+              hint="Gerado automaticamente a partir do nome — você pode editá-lo à vontade."
               placeholder="balneario-praia-azul"
               error={errors.slug?.message}
               disabled={isSubmitting}
               autoCapitalize="none"
               autoComplete="off"
-              {...register('slug')}
+              {...slugField}
+              onChange={(event) => {
+                slugManuallyEdited.current = true;
+                void slugField.onChange(event);
+              }}
             />
 
             <Input

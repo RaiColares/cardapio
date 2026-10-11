@@ -13,13 +13,20 @@ import { AppError } from '../errors/AppError.js';
  * rota a rota), para que nenhuma rota operacional nova nasça com o
  * MANAGER por engano de fora da lista.
  *
+ * FASE 27 — SUPER_ADMIN (supervisor global da plataforma SaaS) também é
+ * papel elevado: reconhecido por `authorize` e liberado nas rotas
+ * operacionais do estabelecimento ao qual o token pertence (o tenant é
+ * sempre imposto pelo establishmentId do JWT — não há vazamento entre
+ * clientes). A gestão GLOBAL de clientes NÃO fica aqui: ela é restrita
+ * ao router `/admin` pelo helper estrito `authorizeSuperAdminOnly`.
+ *
  * O efeito é espelhado no frontend: /admin/*, /waiter e /kitchen aceitam
  * ADMIN e MANAGER.
  *
  * A RBAC fina de pedido (transições de status, escopo da fila) continua
  * no service de pedidos, onde ADMIN/MANAGER já recebem visão global.
  */
-export const ELEVATED_ROLES: readonly UserRole[] = ['ADMIN', 'MANAGER'];
+export const ELEVATED_ROLES: readonly UserRole[] = ['ADMIN', 'MANAGER', 'SUPER_ADMIN'];
 
 function isElevatedRole(role: string): boolean {
   return ELEVATED_ROLES.includes(role as UserRole);
@@ -53,7 +60,34 @@ export function authorize(...allowedRoles: string[]): RequestHandler {
 }
 
 /**
- * Escape explícito da regra dos papéis elevadas: SOMENTE ADMIN.
+ * Escape estrito para as rotas de ADMINISTRAÇÃO DA PLATAFORMA (SaaS):
+ * SOMENTE SUPER_ADMIN.
+ *
+ * Usado a nível de router em `/admin` (FASE 27), que gerencia a base de
+ * clientes (listagem de estabelecimentos e reset de senha). NEM ADMIN
+ * nem MANAGER de um cliente passam por aqui — a regra é estrita e
+ * explícita (como `authorizeAdminOnly` acima), nunca implícita por
+ * omissão. Todas as rotas internas do grupo herdam a restrição sem
+ * repetição rota a rota.
+ */
+export function authorizeSuperAdminOnly(): RequestHandler {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      next(new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.'));
+      return;
+    }
+
+    if (req.user.role !== 'SUPER_ADMIN') {
+      next(new AppError(403, 'FORBIDDEN', 'Permissão insuficiente.'));
+      return;
+    }
+
+    next();
+  };
+}
+
+/**
+ * Escape estrito para as rotas de GESTÃO DE EQUIPE: SOMENTE ADMIN.
  *
  * Usado nas rotas de GESTÃO DE EQUIPE (`/users`), que NÃO são operacionais
  * e deliberadamente ficam fora do acesso irrestrito de ADMIN/MANAGER —

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Save, Wallet } from 'lucide-react';
+import { Building2, DatabaseBackup, Download, Save, Wallet } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -17,6 +17,9 @@ import {
   getEstablishmentSettings,
   updateEstablishmentSettings,
 } from '../../services/establishments.js';
+import { exportBackupCsv } from '../../services/export.js';
+import { useAuthStore } from '../../stores/authStore.js';
+import { downloadBlob } from '../../utils/download.js';
 
 /**
  * Validação espelha o updateEstablishmentSettingsSchema do backend:
@@ -100,6 +103,11 @@ const defaultValues: SettingsFormValues = {
 export function AdminSettingsPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const setEstablishment = useAuthStore((s) => s.setEstablishment);
+  const role = useAuthStore((s) => s.role);
+  // FASE 28 — o endpoint /export/csv é restrito a ADMIN no backend; a seção
+  // de Backup só aparece para ADMIN (MANAGER receberia 403).
+  const isAdmin = role === 'ADMIN';
 
   const settingsQuery = useQuery({
     queryKey: ['establishment-settings'],
@@ -156,8 +164,16 @@ export function AdminSettingsPage() {
           ...(values.cardDebitEnabled ? ['DEBIT_CARD'] : []),
         ],
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['establishment-settings'] });
+      // Branding dinâmico: a marca dos layouts (authStore) acompanha a
+      // alteração de nome/logo sem exigir novo login.
+      setEstablishment({
+        id: result.id,
+        name: result.name,
+        slug: result.slug,
+        logoUrl: result.logoUrl,
+      });
       showToast('success', 'Configurações salvas.');
     },
     onError: (error: unknown) => {
@@ -169,6 +185,27 @@ export function AdminSettingsPage() {
   });
 
   const saving = saveMutation.isPending;
+
+  /**
+   * FASE 28 — Backup: GET /export/csv (ADMIN). O service devolve o Blob e o
+   * nome do arquivo; aqui só disparamos o download e damos feedback. É uma
+   * leitura pura — não invalida o cache de configurações.
+   */
+  const backupMutation = useMutation({
+    mutationFn: exportBackupCsv,
+    onSuccess: ({ blob, filename }) => {
+      downloadBlob(blob, filename);
+      showToast('success', 'Backup exportado.');
+    },
+    onError: (error: unknown) => {
+      showToast(
+        'error',
+        error instanceof ApiError
+          ? error.message
+          : 'Não foi possível exportar o backup.',
+      );
+    },
+  });
 
   const onSubmit = (values: SettingsFormValues): void => {
     saveMutation.mutate(values);
@@ -218,7 +255,7 @@ export function AdminSettingsPage() {
             <Input
               id="settings-logo-url"
               label="URL do logo"
-              hint="Deixe vazio para remover o logo atual."
+              hint="Recomendado: Imagem quadrada (ex: 400x400) com tamanho máximo de 2MB. Deixe vazio para remover o logo atual."
               placeholder="https://cdn.exemplo.com/logo.png"
               error={errors.logoUrl?.message}
               disabled={saving}
@@ -343,6 +380,41 @@ export function AdminSettingsPage() {
               </Button>
             </div>
           </form>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card>
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-sand-100 text-stone-500">
+              <DatabaseBackup className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-stone-800">Backup</p>
+              <p className="text-xs text-stone-500">
+                Exporte os dados estruturais do estabelecimento.
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-4 text-sm text-stone-500">
+            Gera um arquivo CSV com equipe, áreas, mesas, categorias e produtos.
+            Pedidos e histórico financeiro não são incluídos (disponíveis em
+            Relatórios).
+          </p>
+
+          <div className="mt-4">
+            <Button
+              type="button"
+              loading={backupMutation.isPending}
+              onClick={() => backupMutation.mutate()}
+            >
+              {!backupMutation.isPending && <Download className="size-4" aria-hidden="true" />}
+              {backupMutation.isPending
+                ? 'Exportando…'
+                : 'Exportar Backup de Dados (CSV)'}
+            </Button>
+          </div>
         </Card>
       )}
     </div>

@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { AppError } from '../common/errors/AppError.js';
-import { salesQuerySchema } from './dashboard.schemas.js';
+import { buildCsv } from '../common/utils/csv.js';
+import { metricsQuerySchema, salesQuerySchema } from './dashboard.schemas.js';
 import { getMetrics, getSalesExportRows, getSalesReport } from './dashboard.service.js';
 
 /**
@@ -10,7 +11,13 @@ import { getMetrics, getSalesExportRows, getSalesReport } from './dashboard.serv
  * Multi-tenancy: establishmentId SEMPRE do JWT.
  */
 
-/** GET /api/v1/dashboard/metrics — métricas em tempo real do dia */
+/**
+ * GET /api/v1/dashboard/metrics
+ *
+ * Métricas do dashboard. Suporta período opcional (FASE 26):
+ * `?startDate&endDate` (dias, ISO 8601) ou `?month&year` (mês inteiro).
+ * Sem parâmetros, responde o dia atual (comportamento padrão).
+ */
 export async function metricsController(
   req: Request,
   res: Response,
@@ -21,7 +28,17 @@ export async function metricsController(
       throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
     }
 
-    const metrics = await getMetrics(req.user.establishmentId);
+    const query = metricsQuerySchema.safeParse(req.query);
+
+    if (!query.success) {
+      throw new AppError(
+        400,
+        'VALIDATION_ERROR',
+        query.error.issues[0]?.message ?? 'Parâmetros de período inválidos.',
+      );
+    }
+
+    const metrics = await getMetrics(req.user.establishmentId, query.data);
     res.json({ success: true, data: metrics });
   } catch (error) {
     next(error);
@@ -61,25 +78,11 @@ export async function salesController(
 }
 
 /**
- * Serializa uma célula para o formato CSV.
- *
- * FASE 22: delimitador ponto e vírgula (;) — compatibilidade nativa com o
- * Excel na configuração brasileira (decimal vírgula + separador de coluna ;).
- * Campos com ;, aspas ou quebra de linha são envolvidos em aspas duplas e as
- * aspas internas são dobradas (regra básica de escape).
- */
-function escapeCsv(value: string): string {
-  if (/[;"\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-/**
  * Constrói o CSV de vendas: cabeçalho fixo (ID, Data, Total, Taxa,
  * Pagamentos) seguido de uma linha por comanda encerrada no período.
  * Números em ponto fixo com 2 casas decimais (ponto como separador).
- * Um BOM (UTF-8) prefixa o arquivo para o Excel abrir acentuação correta.
+ * O formato (delimitador `;`, escape RFC 4180, BOM UTF-8 e CRLF) vem do
+ * utilitário compartilhado `common/utils/csv.ts`.
  */
 function buildSalesCsv(
   rows: { sessionId: string; closedAt: Date; total: number; serviceFee: number; paid: number }[],
@@ -94,11 +97,7 @@ function buildSalesCsv(
     row.paid.toFixed(2),
   ]);
 
-  const body = [header, ...lines]
-    .map((cells) => cells.map(escapeCsv).join(';'))
-    .join('\r\n');
-
-  return `\uFEFF${body}`;
+  return buildCsv([header, ...lines]);
 }
 
 /**
