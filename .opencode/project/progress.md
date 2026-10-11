@@ -501,3 +501,45 @@ Consome as correções 23.1 do backend:
   MANAGER editar MANAGER → 403; MANAGER promover WAITER→MANAGER → 403;
   MANAGER editar WAITER → ok; ADMIN criar MANAGER → ok. Dados de teste
   removidos e default do estabelecimento demo confirmado via psql.
+
+---
+
+## Infra — Correção do build do backend na Vercel (TS2688)
+
+### Sintoma
+
+O deploy do backend na Vercel falhava na compilação com
+`TS2688: Cannot find type definition file for 'node'`, embora `@types/node`
+já constasse em `backend/package.json#devDependencies`. Localmente o
+`npm run build` sempre passou (exit 0), o que confirma que o problema era
+específico do ambiente de build da Vercel.
+
+### Causa
+
+O `backend/tsconfig.json` declara `"types": ["node"]`, que exige a presença
+de `@types/node` no build. Como `@types/node` (e `typescript`) vivem em
+`devDependencies`, um ambiente que faz pruning de devDependencies no install
+não garante a resolução dos tipos do Node, originando o `TS2688`.
+
+### Correção aplicada (mínima)
+
+Novo `backend/vercel.json` (o `frontend/` já tinha o seu) fixando o ciclo de
+build:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --include=dev",
+  "buildCommand": "npm run build"
+}
+```
+
+`--include=dev` garante a instalação de `@types/node` e `typescript`
+independentemente de o ambiente omitir devDependencies.
+
+### Validação
+
+- `npm run build` (`tsc`) local: exit 0, sem `TS2688`.
+- `vercel.json` validado como JSON.
+- Nenhuma alteração de código-fonte, schema Prisma, dependências ou contratos
+  de API. `backend/package.json` e `package-lock.json` mantêm-se inalterados.

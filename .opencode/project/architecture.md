@@ -395,3 +395,26 @@ Escalabilidade
 Não implementar arquitetura complexa apenas para demonstrar sofisticação.
 
 O projeto deve evoluir conforme necessidades reais.
+
+---
+
+# 17. Deploy
+
+## 17.1 Backend na Vercel
+
+O backend é implantado como um projeto Vercel com **Root Directory** em
+`backend/`.
+
+`@types/node` e `typescript` são **devDependencies** (só são necessárias em
+tempo de build). Ambientes de build que fazem pruning de devDependencies
+(ex.: `npm install` omitindo `--include=dev` quando `NODE_ENV=production`)
+deixam o TypeScript sem os tipos do Node e a compilação falha com
+`TS2688: Cannot find type definition file for 'node'`.
+
+Para garantir um ciclo de build determinístico, `backend/vercel.json` fixa:
+
+* `installCommand`: `npm install --include=dev` — força a instalação das
+  devDependencies (inclui `@types/node` e `typescript`);
+* `buildCommand`: `npm run build` (`tsc`).
+
+O `frontend/` mantém o seu próprio `vercel.json` (rewrites da SPA).
