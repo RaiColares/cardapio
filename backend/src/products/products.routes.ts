@@ -21,9 +21,9 @@ export const productsRouter = Router();
 
 productsRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
 
-productsRouter.get('/', listProductsController);
-productsRouter.get('/:id', getProductController);
-productsRouter.post('/', createProductController);
-productsRouter.put('/:id', updateProductController);
-productsRouter.patch('/:id/availability', availabilityController);
-productsRouter.delete('/:id', deleteProductController);
+productsRouter.get('/', listProductsController as any);
+productsRouter.get('/:id', getProductController as any);
+productsRouter.post('/', createProductController as any);
+productsRouter.put('/:id', updateProductController as any);
+productsRouter.patch('/:id/availability', availabilityController as any);
+productsRouter.delete('/:id', deleteProductController as any);

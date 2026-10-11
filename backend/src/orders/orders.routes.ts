@@ -19,6 +19,6 @@ export const ordersRouter = Router();
 
 ordersRouter.use(authenticate, authorize('ADMIN', 'MANAGER', 'WAITER', 'KITCHEN'));
 
-ordersRouter.get('/', listOrdersController);
-ordersRouter.get('/:id', getOrderController);
-ordersRouter.patch('/:id/status', updateOrderStatusController);
+ordersRouter.get('/', listOrdersController as any);
+ordersRouter.get('/:id', getOrderController as any);
+ordersRouter.patch('/:id/status', updateOrderStatusController as any);

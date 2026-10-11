@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -18,7 +19,7 @@ import {
 
 /** GET /api/v1/table-sessions/:id/payments — lista pagamentos da comanda */
 export async function listSessionPaymentsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -49,7 +50,7 @@ export async function listSessionPaymentsController(
 
 /** POST /api/v1/table-sessions/:id/payments — registra pagamento na comanda */
 export async function createPaymentController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -91,7 +92,7 @@ export async function createPaymentController(
 
 /** PATCH /api/v1/payments/:id — atualiza dados de um pagamento da comanda */
 export async function updatePaymentController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -138,7 +139,7 @@ export async function updatePaymentController(
  * Acesso restrito a WAITER, MANAGER e ADMIN.
  */
 export async function transitionPaymentStatusController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -183,7 +184,7 @@ export async function transitionPaymentStatusController(
  * Remove o pagamento e devolve o saldo recalculado da comanda.
  */
 export async function deletePaymentController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

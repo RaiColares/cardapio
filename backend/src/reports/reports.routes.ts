@@ -13,4 +13,4 @@ export const reportsRouter = Router();
 
 reportsRouter.use(authenticate, authorize('MANAGER', 'ADMIN'));
 
-reportsRouter.get('/audit', auditController);
+reportsRouter.get('/audit', auditController as any);

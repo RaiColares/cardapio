@@ -1,11 +1,12 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import { getAuditLogs } from './reports.service.js';
 
 /** GET /api/v1/reports/audit — últimas 100 ações do estabelecimento */
 export async function auditController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

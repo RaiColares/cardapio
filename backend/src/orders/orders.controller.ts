@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -14,7 +15,7 @@ import {
 
 /** GET /api/v1/orders — lista pedidos operacionais do estabelecimento */
 export async function listOrdersController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -46,7 +47,7 @@ export async function listOrdersController(
 
 /** GET /api/v1/orders/:id — detalhe operacional de um pedido */
 export async function getOrderController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -84,7 +85,7 @@ export async function getOrderController(
  * destino (ex.: KITCHEN pode PREPARING/READY; WAITER CONFIRMED/DELIVERED).
  */
 export async function updateOrderStatusController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -17,7 +18,7 @@ import {
   updateProduct,
 } from './products.service.js';
 
-function requireUser(req: Request) {
+function requireUser(req: AuthRequest) {
   if (!req.user) {
     throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
   }
@@ -26,7 +27,7 @@ function requireUser(req: Request) {
 
 /** GET /api/v1/products */
 export async function listProductsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -51,7 +52,7 @@ export async function listProductsController(
 
 /** GET /api/v1/products/:id */
 export async function getProductController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -76,7 +77,7 @@ export async function getProductController(
 
 /** POST /api/v1/products */
 export async function createProductController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -101,7 +102,7 @@ export async function createProductController(
 
 /** PUT /api/v1/products/:id */
 export async function updateProductController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -141,7 +142,7 @@ export async function updateProductController(
 
 /** PATCH /api/v1/products/:id/availability — pausar/liberar item */
 export async function availabilityController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -181,7 +182,7 @@ export async function availabilityController(
 
 /** DELETE /api/v1/products/:id */
 export async function deleteProductController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
