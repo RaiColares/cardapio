@@ -32,17 +32,17 @@ export const tablesRouter = Router();
 tablesRouter.use(authenticate);
 
 // ---- Leitura (operação + gestão) ----
-tablesRouter.get('/', authorize('WAITER', 'MANAGER', 'ADMIN'), listTablesController);
-tablesRouter.get('/:id', authorize('WAITER', 'MANAGER', 'ADMIN'), getTableController);
+tablesRouter.get('/', authorize('WAITER', 'MANAGER', 'ADMIN'), listTablesController as any);
+tablesRouter.get('/:id', authorize('WAITER', 'MANAGER', 'ADMIN'), getTableController as any);
 
 // ---- Escrita (gestão) ----
-tablesRouter.post('/', authorize('MANAGER', 'ADMIN'), createTableController);
-tablesRouter.put('/:id', authorize('MANAGER', 'ADMIN'), updateTableController);
-tablesRouter.delete('/:id', authorize('MANAGER', 'ADMIN'), deleteTableController);
+tablesRouter.post('/', authorize('MANAGER', 'ADMIN'), createTableController as any);
+tablesRouter.put('/:id', authorize('MANAGER', 'ADMIN'), updateTableController as any);
+tablesRouter.delete('/:id', authorize('MANAGER', 'ADMIN'), deleteTableController as any);
 
 // FASE 23 — Vínculo de garçons (NxN). Somente gestão.
 tablesRouter.put(
   '/:id/waiters',
   authorize('MANAGER', 'ADMIN'),
-  assignTableWaitersController,
+  assignTableWaitersController as any,
 );

@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import { createUserSchema, updateUserSchema, userIdParamSchema } from './users.schemas.js';
@@ -11,10 +12,7 @@ import {
   updateUser,
 } from './users.service.js';
 
-function requireUser(req: Request) {
-  if (!req.user) {
-    throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-  }
+function requireUser(req: AuthRequest) {
   return req.user;
 }
 
@@ -23,7 +21,7 @@ function requireUser(req: Request) {
  * Perfil do usuário autenticado (qualquer role).
  */
 export async function meController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -45,7 +43,7 @@ export async function meController(
  * outros gestores.
  */
 export async function listUsersController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -63,7 +61,7 @@ export async function listUsersController(
  * Detalhe de um membro da equipe (ADMIN, sempre dentro do tenant).
  */
 export async function getUserController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -95,7 +93,7 @@ export async function getUserController(
  * criar usuários fora da equipe operacional (ADMIN/MANAGER).
  */
 export async function createUserController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -123,7 +121,7 @@ export async function createUserController(
  * Atualiza um membro da equipe (ADMIN/MANAGER — FASE 24, tenant via JWT).
  */
 export async function updateUserController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -162,7 +160,7 @@ export async function updateUserController(
  * Remove um membro da equipe (ADMIN, tenant via JWT).
  */
 export async function deleteUserController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

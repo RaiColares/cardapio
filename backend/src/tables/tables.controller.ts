@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -18,14 +19,11 @@ import {
 
 /** GET /api/v1/tables — lista mesas do estabelecimento autenticado */
 export async function listTablesController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const areaId = typeof req.query.areaId === 'string' ? req.query.areaId : undefined;
 
@@ -38,14 +36,11 @@ export async function listTablesController(
 
 /** GET /api/v1/tables/:id — detalhe de uma mesa */
 export async function getTableController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const params = tableIdParamSchema.safeParse(req.params);
 
@@ -66,14 +61,11 @@ export async function getTableController(
 
 /** POST /api/v1/tables — cria uma mesa (qrCode gerado automaticamente) */
 export async function createTableController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const body = createTableSchema.safeParse(req.body);
 
@@ -94,14 +86,11 @@ export async function createTableController(
 
 /** PUT /api/v1/tables/:id — atualiza uma mesa */
 export async function updateTableController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const params = tableIdParamSchema.safeParse(req.params);
 
@@ -132,14 +121,11 @@ export async function updateTableController(
 
 /** DELETE /api/v1/tables/:id — remove uma mesa */
 export async function deleteTableController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const params = tableIdParamSchema.safeParse(req.params);
 
@@ -164,14 +150,11 @@ export async function deleteTableController(
  * Restrito a MANAGER/ADMIN. `userIds: []` limpa o vínculo.
  */
 export async function assignTableWaitersController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
 
     const params = tableIdParamSchema.safeParse(req.params);
 

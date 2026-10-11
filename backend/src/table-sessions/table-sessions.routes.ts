@@ -19,7 +19,7 @@ export const tableSessionsRouter = Router();
 
 tableSessionsRouter.use(authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'));
 
-tableSessionsRouter.get('/:id/bill', getSessionBillController);
-tableSessionsRouter.get('/:id/receipt', getSessionReceiptController);
-tableSessionsRouter.patch('/:id/adjustments', updateSessionAdjustmentsController);
-tableSessionsRouter.post('/:id/close', closeSessionController);
+tableSessionsRouter.get('/:id/bill', getSessionBillController as any);
+tableSessionsRouter.get('/:id/receipt', getSessionReceiptController as any);
+tableSessionsRouter.patch('/:id/adjustments', updateSessionAdjustmentsController as any);
+tableSessionsRouter.post('/:id/close', closeSessionController as any);

@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -14,14 +15,12 @@ import {
 
 /** GET /api/v1/table-sessions/:id/bill — resumo financeiro da comanda */
 export async function getSessionBillController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
+    
 
     const params = sessionIdParamsSchema.safeParse(req.params);
 
@@ -48,14 +47,12 @@ export async function getSessionBillController(
  * Comprovante não-oficial consolidado da comanda (privado).
  */
 export async function getSessionReceiptController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
+    
 
     const params = sessionIdParamsSchema.safeParse(req.params);
 
@@ -79,14 +76,12 @@ export async function getSessionReceiptController(
 
 /** POST /api/v1/table-sessions/:id/close — fechamento atômico da comanda */
 export async function closeSessionController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
+    
 
     const params = sessionIdParamsSchema.safeParse(req.params);
 
@@ -115,14 +110,12 @@ export async function closeSessionController(
  * bill recalculado (o servidor é a autoridade sobre o total).
  */
 export async function updateSessionAdjustmentsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    if (!req.user) {
-      throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
-    }
+    
 
     const params = sessionIdParamsSchema.safeParse(req.params);
 
