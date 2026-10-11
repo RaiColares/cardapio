@@ -19,7 +19,7 @@ import {
  *   token válido ANTES de chegar aqui);
  * - ADMIN/MANAGER/WAITER/KITCHEN recebem 403 FORBIDDEN em qualquer rota
  *   deste grupo;
- * - o `auditMiddleware` global registra as mutações (POST/PATCH) com o
+ * - o `auditMiddleware as any` global registra as mutações (POST/PATCH) com o
  *   body saneado (o campo `password` é descartado; e-mail/isActive são
  *   registrados por serem dados não sensíveis).
  *
@@ -27,26 +27,26 @@ import {
  */
 export const adminRouter = Router();
 
-adminRouter.use(authenticate, authorizeSuperAdminOnly());
+adminRouter.use('/', authenticate as any, authorizeSuperAdminOnly() as any);
 
 // GET /api/v1/admin/establishments — listagem de clientes cadastrados.
-adminRouter.get('/establishments', listEstablishmentsController);
+adminRouter.get('/establishments', listEstablishmentsController as any);
 
 // POST /api/v1/admin/authorized-emails — autoriza e-mail para onboarding SaaS.
-adminRouter.post('/authorized-emails', authorizeClientEmailController);
+adminRouter.post('/authorized-emails', authorizeClientEmailController as any);
 
 // PATCH /api/v1/admin/establishments/:id/password — reset de senha do cliente.
 adminRouter.patch(
   '/establishments/:id/password',
-  updateClientPasswordController,
+  updateClientPasswordController as any,
 );
 
 // PATCH /api/v1/admin/establishments/:id/status — suspende/reativa o cliente.
 adminRouter.patch(
   '/establishments/:id/status',
-  updateClientStatusController,
+  updateClientStatusController as any,
 );
 
 // DELETE /api/v1/admin/establishments/:id — exclusão DEFINITIVA do cliente
 // (cascade em todos os dados vinculados; irreversível).
-adminRouter.delete('/establishments/:id', deleteEstablishmentController);
+adminRouter.delete('/establishments/:id', deleteEstablishmentController as any);
