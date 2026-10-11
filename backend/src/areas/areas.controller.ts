@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -16,7 +17,7 @@ import {
 
 /** GET /api/v1/areas — lista áreas do estabelecimento autenticado */
 export async function listAreasController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -34,7 +35,7 @@ export async function listAreasController(
 
 /** GET /api/v1/areas/:id — detalhe de uma área */
 export async function getAreaController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -62,7 +63,7 @@ export async function getAreaController(
 
 /** POST /api/v1/areas — cria uma área */
 export async function createAreaController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -90,7 +91,7 @@ export async function createAreaController(
 
 /** PUT /api/v1/areas/:id — atualiza uma área */
 export async function updateAreaController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -128,7 +129,7 @@ export async function updateAreaController(
 
 /** DELETE /api/v1/areas/:id — remove uma área */
 export async function deleteAreaController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

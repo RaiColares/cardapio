@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import { buildCsv } from '../common/utils/csv.js';
@@ -222,7 +223,7 @@ function buildBackupCsv(backup: EstablishmentBackup): string {
  * baixa o ficheiro diretamente (`backup-dados.csv`) em vez de renderizar.
  */
 export async function exportCsvController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

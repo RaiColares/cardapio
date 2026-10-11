@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -17,7 +18,7 @@ import {
 
 /** GET /api/v1/modifiers — lista adicionais do estabelecimento autenticado */
 export async function listModifiersController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -49,7 +50,7 @@ export async function listModifiersController(
 
 /** GET /api/v1/modifiers/:id — detalhe de um adicional */
 export async function getModifierController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -80,7 +81,7 @@ export async function getModifierController(
 
 /** POST /api/v1/modifiers — cria um adicional */
 export async function createModifierController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -111,7 +112,7 @@ export async function createModifierController(
 
 /** PUT /api/v1/modifiers/:id — atualiza um adicional */
 export async function updateModifierController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -153,7 +154,7 @@ export async function updateModifierController(
 
 /** DELETE /api/v1/modifiers/:id — remove um adicional */
 export async function deleteModifierController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

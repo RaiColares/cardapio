@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import { buildCsv } from '../common/utils/csv.js';
@@ -19,7 +20,7 @@ import { getMetrics, getSalesExportRows, getSalesReport } from './dashboard.serv
  * Sem parâmetros, responde o dia atual (comportamento padrão).
  */
 export async function metricsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -47,7 +48,7 @@ export async function metricsController(
 
 /** GET /api/v1/dashboard/sales?startDate&endDate — relatório de vendas */
 export async function salesController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -109,7 +110,7 @@ function buildSalesCsv(
  * o rótulo ASCII `attachment` evita a quebra do header pelo shell.
  */
 export async function salesExportController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

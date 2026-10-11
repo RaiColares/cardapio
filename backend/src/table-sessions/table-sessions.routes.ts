@@ -17,7 +17,7 @@ import {
  */
 export const tableSessionsRouter = Router();
 
-tableSessionsRouter.use(authenticate, authorize('WAITER', 'MANAGER', 'ADMIN'));
+tableSessionsRouter.use(authenticate as any, (authorize as any)('WAITER', 'MANAGER', 'ADMIN'));
 
 tableSessionsRouter.get('/:id/bill', getSessionBillController as any);
 tableSessionsRouter.get('/:id/receipt', getSessionReceiptController as any);

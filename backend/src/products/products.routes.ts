@@ -19,7 +19,7 @@ import {
  */
 export const productsRouter = Router();
 
-productsRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+productsRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER'));
 
 productsRouter.get('/', listProductsController as any);
 productsRouter.get('/:id', getProductController as any);

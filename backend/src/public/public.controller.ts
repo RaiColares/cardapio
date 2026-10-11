@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -30,7 +31,7 @@ import {
 
 /** GET /api/v1/public/menu/:slug */
 export async function menuController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -54,7 +55,7 @@ export async function menuController(
 
 /** GET /api/v1/public/table/:qrCode */
 export async function tableController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -78,7 +79,7 @@ export async function tableController(
 
 /** GET /api/v1/public/orders/:id — rastreio do pedido pelo cliente */
 export async function getPublicOrderController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -102,7 +103,7 @@ export async function getPublicOrderController(
 
 /** POST /api/v1/public/table-sessions/:sessionToken/request-bill */
 export async function requestBillController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -136,7 +137,7 @@ export async function requestBillController(
 
 /** GET /api/v1/public/table-sessions/:sessionToken/receipt — comprovante do cliente */
 export async function publicReceiptController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -160,7 +161,7 @@ export async function publicReceiptController(
 
 /** GET /api/v1/public/table-sessions/:sessionToken/orders — extrato da comanda */
 export async function getSessionOrdersController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -184,7 +185,7 @@ export async function getSessionOrdersController(
 
 /** POST /api/v1/public/orders */
 export async function createPublicOrderController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

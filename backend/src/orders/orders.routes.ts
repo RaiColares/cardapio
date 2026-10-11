@@ -17,7 +17,7 @@ import {
  */
 export const ordersRouter = Router();
 
-ordersRouter.use(authenticate, authorize('ADMIN', 'MANAGER', 'WAITER', 'KITCHEN'));
+ordersRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER', 'WAITER', 'KITCHEN'));
 
 ordersRouter.get('/', listOrdersController as any);
 ordersRouter.get('/:id', getOrderController as any);

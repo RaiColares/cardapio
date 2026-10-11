@@ -12,8 +12,8 @@ import { metricsController, salesController, salesExportController } from './das
  */
 export const dashboardRouter = Router();
 
-dashboardRouter.use(authenticate, authorize('MANAGER', 'ADMIN'));
+dashboardRouter.use(authenticate as any, (authorize as any)('MANAGER', 'ADMIN'));
 
-dashboardRouter.get('/metrics', metricsController);
-dashboardRouter.get('/sales', salesController);
-dashboardRouter.get('/sales/export', salesExportController);
+dashboardRouter.get('/metrics', metricsController as any);
+dashboardRouter.get('/sales', salesController as any);
+dashboardRouter.get('/sales/export', salesExportController as any);

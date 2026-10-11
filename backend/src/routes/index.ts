@@ -30,7 +30,7 @@ import { healthRouter } from './health.js';
  * As rotas públicas (/auth/login, /public/*) permanecem SEM autenticação
  * nem auditoria (o cliente não é um usuário do painel). A partir daqui,
  * todas as rotas administrativas passam por `authenticate` global (o
- * usuário autenticado) e pelo `auditMiddleware`, que grava em audit_logs
+ * usuário autenticado) e pelo `auditMiddleware as any`, que grava em audit_logs
  * as mutações (POST/PUT/PATCH/DELETE) autenticadas. Os routers de módulo
  * continuam aplicando `authorize(role...)` internamente para a RBAC fina.
  */
@@ -42,8 +42,8 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/public', publicRouter);
 
 // ---- Administrativas (staff autenticado + auditoria) ----
-apiRouter.use(authenticate);
-apiRouter.use(auditMiddleware);
+apiRouter.use(authenticate as any);
+apiRouter.use(auditMiddleware as any);
 
 // FASE 27 — administração da PLATAFORMA SaaS (exclusivo SUPER_ADMIN).
 // Montado depois do `authenticate` global: o router reforça a RBAC

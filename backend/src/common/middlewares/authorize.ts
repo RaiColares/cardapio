@@ -1,3 +1,4 @@
+import type { AuthRequest } from '../types/auth-request.js';
 import type { UserRole } from '@prisma/client';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
@@ -44,7 +45,7 @@ function isElevatedRole(role: string): boolean {
  *  2. é uma role elevada (ADMIN/MANAGER) — ver ELEVATED_ROLES.
  */
 export function authorize(...allowedRoles: string[]): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return ((req: AuthRequest | any, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.'));
       return;
@@ -56,7 +57,7 @@ export function authorize(...allowedRoles: string[]): RequestHandler {
     }
 
     next(new AppError(403, 'FORBIDDEN', 'Permissão insuficiente.'));
-  };
+  }) as any;
 }
 
 /**
@@ -71,7 +72,7 @@ export function authorize(...allowedRoles: string[]): RequestHandler {
  * repetição rota a rota.
  */
 export function authorizeSuperAdminOnly(): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return ((req: AuthRequest | any, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.'));
       return;
@@ -83,7 +84,7 @@ export function authorizeSuperAdminOnly(): RequestHandler {
     }
 
     next();
-  };
+  }) as any;
 }
 
 /**
@@ -100,7 +101,7 @@ export function authorizeSuperAdminOnly(): RequestHandler {
  * ADMIN e `CANNOT_MODIFY_ADMIN`/`CANNOT_DELETE_ADMIN` protegem o dono.
  */
 export function authorizeAdminOnly(): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction): void => {
+  return ((req: AuthRequest | any, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.'));
       return;
@@ -112,5 +113,5 @@ export function authorizeAdminOnly(): RequestHandler {
     }
 
     next();
-  };
+  }) as any;
 }

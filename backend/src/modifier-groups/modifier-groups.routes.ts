@@ -18,10 +18,10 @@ import {
  */
 export const modifierGroupsRouter = Router();
 
-modifierGroupsRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+modifierGroupsRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER'));
 
-modifierGroupsRouter.get('/', listModifierGroupsController);
-modifierGroupsRouter.get('/:id', getModifierGroupController);
-modifierGroupsRouter.post('/', createModifierGroupController);
-modifierGroupsRouter.put('/:id', updateModifierGroupController);
-modifierGroupsRouter.delete('/:id', deleteModifierGroupController);
+modifierGroupsRouter.get('/', listModifierGroupsController as any);
+modifierGroupsRouter.get('/:id', getModifierGroupController as any);
+modifierGroupsRouter.post('/', createModifierGroupController as any);
+modifierGroupsRouter.put('/:id', updateModifierGroupController as any);
+modifierGroupsRouter.delete('/:id', deleteModifierGroupController as any);

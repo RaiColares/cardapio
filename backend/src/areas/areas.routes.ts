@@ -18,10 +18,10 @@ import {
  */
 export const areasRouter = Router();
 
-areasRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+areasRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER'));
 
-areasRouter.get('/', listAreasController);
-areasRouter.get('/:id', getAreaController);
-areasRouter.post('/', createAreaController);
-areasRouter.put('/:id', updateAreaController);
-areasRouter.delete('/:id', deleteAreaController);
+areasRouter.get('/', listAreasController as any);
+areasRouter.get('/:id', getAreaController as any);
+areasRouter.post('/', createAreaController as any);
+areasRouter.put('/:id', updateAreaController as any);
+areasRouter.delete('/:id', deleteAreaController as any);

@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -16,7 +17,7 @@ import {
 
 /** GET /api/v1/modifier-groups — lista grupos do estabelecimento autenticado */
 export async function listModifierGroupsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -34,7 +35,7 @@ export async function listModifierGroupsController(
 
 /** GET /api/v1/modifier-groups/:id — detalhe do grupo */
 export async function getModifierGroupController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -65,7 +66,7 @@ export async function getModifierGroupController(
 
 /** POST /api/v1/modifier-groups — cria um grupo */
 export async function createModifierGroupController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -96,7 +97,7 @@ export async function createModifierGroupController(
 
 /** PUT /api/v1/modifier-groups/:id — atualiza um grupo */
 export async function updateModifierGroupController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -138,7 +139,7 @@ export async function updateModifierGroupController(
 
 /** DELETE /api/v1/modifier-groups/:id — remove um grupo */
 export async function deleteModifierGroupController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

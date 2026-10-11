@@ -17,18 +17,18 @@ import {
 export const establishmentsRouter = Router();
 
 // Onboarding público — novo restaurante + proprietário ADMIN.
-establishmentsRouter.post('/register', registerEstablishmentController);
+establishmentsRouter.post('/register', registerEstablishmentController as any);
 
 // Configurações do próprio estabelecimento (multi-tenancy via JWT).
 establishmentsRouter.get(
   '/me',
-  authenticate,
-  authorize('ADMIN', 'MANAGER'),
-  getEstablishmentSettingsController,
+  authenticate as any,
+  (authorize as any)('ADMIN', 'MANAGER'),
+  getEstablishmentSettingsController as any,
 );
 establishmentsRouter.put(
   '/me',
-  authenticate,
-  authorize('ADMIN', 'MANAGER'),
-  updateEstablishmentSettingsController,
+  authenticate as any,
+  (authorize as any)('ADMIN', 'MANAGER'),
+  updateEstablishmentSettingsController as any,
 );

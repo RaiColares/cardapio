@@ -18,10 +18,10 @@ import {
  */
 export const modifiersRouter = Router();
 
-modifiersRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+modifiersRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER'));
 
-modifiersRouter.get('/', listModifiersController);
-modifiersRouter.get('/:id', getModifierController);
-modifiersRouter.post('/', createModifierController);
-modifiersRouter.put('/:id', updateModifierController);
-modifiersRouter.delete('/:id', deleteModifierController);
+modifiersRouter.get('/', listModifiersController as any);
+modifiersRouter.get('/:id', getModifierController as any);
+modifiersRouter.post('/', createModifierController as any);
+modifiersRouter.put('/:id', updateModifierController as any);
+modifiersRouter.delete('/:id', deleteModifierController as any);

@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -15,7 +16,7 @@ import {
   updateCategory,
 } from './categories.service.js';
 
-function requireUser(req: Request) {
+function requireUser(req: AuthRequest) {
   if (!req.user) {
     throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
   }
@@ -24,7 +25,7 @@ function requireUser(req: Request) {
 
 /** GET /api/v1/categories — lista com ordenação por displayOrder (padrão) */
 export async function listCategoriesController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -50,7 +51,7 @@ export async function listCategoriesController(
 
 /** GET /api/v1/categories/:id */
 export async function getCategoryController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -75,7 +76,7 @@ export async function getCategoryController(
 
 /** POST /api/v1/categories */
 export async function createCategoryController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -100,7 +101,7 @@ export async function createCategoryController(
 
 /** PUT /api/v1/categories/:id */
 export async function updateCategoryController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -140,7 +141,7 @@ export async function updateCategoryController(
 
 /** DELETE /api/v1/categories/:id */
 export async function deleteCategoryController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

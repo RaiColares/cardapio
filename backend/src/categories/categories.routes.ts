@@ -18,10 +18,10 @@ import {
  */
 export const categoriesRouter = Router();
 
-categoriesRouter.use(authenticate, authorize('ADMIN', 'MANAGER'));
+categoriesRouter.use(authenticate as any, (authorize as any)('ADMIN', 'MANAGER'));
 
-categoriesRouter.get('/', listCategoriesController);
-categoriesRouter.get('/:id', getCategoryController);
-categoriesRouter.post('/', createCategoryController);
-categoriesRouter.put('/:id', updateCategoryController);
-categoriesRouter.delete('/:id', deleteCategoryController);
+categoriesRouter.get('/', listCategoriesController as any);
+categoriesRouter.get('/:id', getCategoryController as any);
+categoriesRouter.post('/', createCategoryController as any);
+categoriesRouter.put('/:id', updateCategoryController as any);
+categoriesRouter.delete('/:id', deleteCategoryController as any);

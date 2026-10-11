@@ -37,17 +37,17 @@ export const usersRouter = Router();
 
 // Perfil do próprio usuário: qualquer role autenticada.
 // Registrada ANTES do CRUD para que "me" não seja capturada por "/:id".
-usersRouter.get('/me', authenticate, meController as any);
+usersRouter.get('/me', authenticate as any, meController as any);
 
 // Listagem da equipe: ADMIN (todos) e MANAGER (apenas WAITER/KITCHEN).
-usersRouter.get('/', authenticate, authorize('ADMIN', 'MANAGER'), listUsersController as any);
+usersRouter.get('/', authenticate as any, (authorize as any)('ADMIN', 'MANAGER'), listUsersController as any);
 
 // CRUD da equipe — establishmentId sempre do token (multi-tenancy).
 // Criação/edição: ADMIN e MANAGER (MANAGER restrito a WAITER/KITCHEN no service).
-usersRouter.post('/', authenticate, authorize('ADMIN', 'MANAGER'), createUserController as any);
-usersRouter.put('/:id', authenticate, authorize('ADMIN', 'MANAGER'), updateUserController as any);
-usersRouter.patch('/:id', authenticate, authorize('ADMIN', 'MANAGER'), updateUserController as any);
+usersRouter.post('/', authenticate as any, (authorize as any)('ADMIN', 'MANAGER'), createUserController as any);
+usersRouter.put('/:id', authenticate as any, (authorize as any)('ADMIN', 'MANAGER'), updateUserController as any);
+usersRouter.patch('/:id', authenticate as any, (authorize as any)('ADMIN', 'MANAGER'), updateUserController as any);
 
 // Detalhe e exclusão continuam ADMIN-only (gestão de gestores).
-usersRouter.get('/:id', authenticate, authorizeAdminOnly(), getUserController as any);
-usersRouter.delete('/:id', authenticate, authorizeAdminOnly(), deleteUserController as any);
+usersRouter.get('/:id', authenticate as any, (authorizeAdminOnly() as any), getUserController as any);
+usersRouter.delete('/:id', authenticate as any, (authorizeAdminOnly() as any), deleteUserController as any);

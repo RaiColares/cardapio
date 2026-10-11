@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import { loginSchema, registerSchema } from './auth.schemas.js';
@@ -15,7 +16,7 @@ import {
  * autenticação no service e responde com o token JWT.
  */
 export async function loginController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -47,7 +48,7 @@ export async function loginController(
  * transação e responde com mensagem de sucesso.
  */
 export async function registerController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -79,7 +80,7 @@ export async function registerController(
  * middleware explicitamente.
  */
 export async function meController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {

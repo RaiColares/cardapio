@@ -11,6 +11,6 @@ import { auditController } from './reports.controller.js';
  */
 export const reportsRouter = Router();
 
-reportsRouter.use(authenticate, authorize('MANAGER', 'ADMIN'));
+reportsRouter.use(authenticate as any, (authorize as any)('MANAGER', 'ADMIN'));
 
 reportsRouter.get('/audit', auditController as any);

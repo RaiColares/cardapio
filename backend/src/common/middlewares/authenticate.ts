@@ -1,3 +1,4 @@
+import type { AuthRequest } from '../types/auth-request.js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { AppError } from '../errors/AppError.js';
@@ -11,7 +12,7 @@ import { verifyAccessToken } from '../auth/jwt.js';
  *
  * req.user = { userId, establishmentId, role }
  */
-export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+export function authenticate(req: AuthRequest, _res: Response, next: NextFunction): void {
   const authorization = req.headers.authorization;
 
   if (!authorization) {

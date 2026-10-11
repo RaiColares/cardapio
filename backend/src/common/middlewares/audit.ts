@@ -1,3 +1,4 @@
+import type { AuthRequest } from '../types/auth-request.js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { Prisma } from '@prisma/client';
@@ -88,7 +89,7 @@ function sanitizePayload(value: unknown, depth = 0): unknown {
 }
 
 /** Deriva action, entity e entityId da URL da requisição. */
-function buildContext(req: Request): { action: string; entity: string; entityId: string | null } {
+function buildContext(req: AuthRequest): { action: string; entity: string; entityId: string | null } {
   const path = `${req.baseUrl}${req.path}`.replace(/\/$/, '');
   const segments = path.split('/').filter(Boolean);
 
@@ -108,7 +109,7 @@ function buildContext(req: Request): { action: string; entity: string; entityId:
  * Intercepta mutações autenticadas e registra em audit_logs após a resposta.
  * Fire-and-forget: o log nunca bloqueia nem derruba a requisição.
  */
-export function auditMiddleware(req: Request, res: Response, next: NextFunction): void {
+export function auditMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
   const actor = req.user;
 
   if (!MUTATING_METHODS.has(req.method) || !actor) {

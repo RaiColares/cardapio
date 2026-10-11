@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -11,7 +12,7 @@ import {
   updateEstablishmentSettings,
 } from './establishments.service.js';
 
-function requireUser(req: Request) {
+function requireUser(req: AuthRequest) {
   if (!req.user) {
     throw new AppError(401, 'AUTH_REQUIRED', 'Autenticação necessária.');
   }
@@ -25,7 +26,7 @@ function requireUser(req: Request) {
  * estabelecimento e o proprietário ADMIN em uma transação.
  */
 export async function registerEstablishmentController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -54,7 +55,7 @@ export async function registerEstablishmentController(
  * O establishmentId é extraído do token, nunca de parâmetros.
  */
 export async function getEstablishmentSettingsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -73,7 +74,7 @@ export async function getEstablishmentSettingsController(
  * Atualiza as configurações do estabelecimento (nome, logo, taxa de serviço).
  */
 export async function updateEstablishmentSettingsController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
