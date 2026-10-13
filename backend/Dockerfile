@@ -1,14 +1,22 @@
 # ---------------------------------------------------------------
 # Cardápio Digital — Backend (API Express + Prisma + Socket.IO)
-# Imagem de produção baseada em node:24-alpine (alinhada ao engines.node do
-# package.json).
+# Imagem de produção baseada em node:24-slim (Debian), alinhada ao engines.node
+# do package.json. Optamos por Debian em vez de Alpine porque o motor do Prisma
+# depende da detecção de libssl/OpenSSL, que é mais confiável no glibc/Debian.
 # ---------------------------------------------------------------
-FROM node:24-alpine
+FROM node:24-slim
 
 LABEL org.opencontainers.image.title="cardapio-digital-backend"
 LABEL org.opencontainers.image.description="API da plataforma de pedidos para balneários"
 
 WORKDIR /app
+
+# O pacote openssl é necessário para o Prisma detectar a versão de libssl em
+# runtime (evita "failed to detect the libssl/openssl version" / "Could not
+# parse schema engine response"). ca-certificates garante TLS ao Neon/Postgres.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # O prisma generate resolve o datasource do schema, que referencia
 # env("DATABASE_URL"). Nesta etapa ele apenas valida a URL (não conecta);

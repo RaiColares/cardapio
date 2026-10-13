@@ -1,8 +1,8 @@
 # Fase 1 (build) — dependências e binários voltados ao container
 # ---------------------------------------------------------------
 # node_modules e dist existentes no host são do mesmo projeto, mas podem
-# conter binários de outra plataforma (ex.: bcrypt compilado p/ glibc). Sempre
-# reconstruí-los dentro do node:24-alpine (musl) para um build reproduzível.
+# conter binários de outra plataforma. Sempre reconstruí-los dentro da imagem
+# node:24-slim (Debian/glibc) para um build reproduzível.
 node_modules
 dist
 
