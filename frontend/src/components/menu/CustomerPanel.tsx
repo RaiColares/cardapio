@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import { BellRing, Minus, Plus, ShoppingBag, ShoppingCart, Trash2 } from 'lucide-react';
 
+import { ApiError } from '../../services/api.js';
 import {
   createPublicOrder,
   getPublicOrder,
@@ -26,6 +27,14 @@ interface CustomerPanelProps {
 }
 
 const MAX_ITEMS_PER_ORDER = 30;
+
+/**
+ * Aviso exibido quando o cliente tenta pedir numa comanda já encerrada.
+ * O backend responde 409 SESSION_CLOSED; aqui trocamos a mensagem padrão do
+ * servidor pela orientação ao cliente.
+ */
+const CLOSED_SESSION_MESSAGE =
+  'A sessão desta mesa foi encerrada. Para novos pedidos atualize a página.';
 
 /** Status "vivos" para o contador de pedidos em andamento do atalho fixo. */
 const LIVE_ORDER_STATUSES = new Set<OrderStatus>([
@@ -95,7 +104,12 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
       showToast('success', `Pedido ${order.orderNumber} enviado para a cozinha!`);
     },
     onError: (error: Error) => {
-      showToast('error', error.message);
+      showToast(
+        'error',
+        error instanceof ApiError && error.code === 'SESSION_CLOSED'
+          ? CLOSED_SESSION_MESSAGE
+          : error.message,
+      );
     },
   });
 
