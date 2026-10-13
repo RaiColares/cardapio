@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------
 # Cardápio Digital — Backend (API Express + Prisma + Socket.IO)
-# Imagem de produção baseada em node:22-alpine.
+# Imagem de produção baseada em node:24-alpine (alinhada ao engines.node do
+# package.json).
 # ---------------------------------------------------------------
-FROM node:22-alpine
+FROM node:24-alpine
 
 LABEL org.opencontainers.image.title="cardapio-digital-backend"
 LABEL org.opencontainers.image.description="API da plataforma de pedidos para balneários"

@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Cardápio Digital — Blueprint do Render (arquivo de REFERÊNCIA).
+#
+# O Render exige que este arquivo esteja na RAIZ do repositório. A API vive em
+# ./backend, por isso usamos rootDir + dockerContext apontando para essa pasta.
+#
+# Segredos NÃO ficam versionados: variáveis com `sync: false` devem ser
+# preenchidas no painel do Render (ou via `render.yaml` values + Secret Files).
+#
+# Aplicar: no painel do Render → New → Blueprint → conectar o repositório.
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: cardapio-digital-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./backend
+    # Orquestrador usa GET /health (backend/src/routes/health.ts) para saber se
+    # a instância subiu. `migrate deploy` roda no CMD do Dockerfile antes do
+    # `npm start`, então a primeira resposta só ocorre com o schema aplicado.
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # CORS: apenas a origem da SPA em produção (allowlist em backend/src/app.ts).
+      - key: CORS_ORIGIN
+        value: https://cardapiotech.vercel.app
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      # Definir no painel (segredos) — nunca versionar.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

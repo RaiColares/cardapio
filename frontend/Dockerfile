@@ -1,12 +1,12 @@
 # ---------------------------------------------------------------
 # Cardápio Digital — Frontend (SPA React)
 # Dockerfile multi-stage:
-#   Estágio 1 — build: node:22-alpine compila a SPA (Vite).
+#   Estágio 1 — build: node:24-alpine compila a SPA (Vite).
 #   Estágio 2 — runtime: nginx:alpine entrega o dist estático.
 # ---------------------------------------------------------------
 
 # ---------- Estágio 1: build ----------
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 

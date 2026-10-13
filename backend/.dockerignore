@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------
 # node_modules e dist existentes no host são do mesmo projeto, mas podem
 # conter binários de outra plataforma (ex.: bcrypt compilado p/ glibc). Sempre
-# reconstruí-los dentro do node:22-alpine (musl) para um build reproduzível.
+# reconstruí-los dentro do node:24-alpine (musl) para um build reproduzível.
 node_modules
 dist
 
