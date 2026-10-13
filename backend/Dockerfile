@@ -41,5 +41,14 @@ ENV NODE_ENV=production
 
 EXPOSE 4000
 
-# 4) Aplica migrations pendentes e, em seguida, inicia o servidor compilado.
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+# 4) Inicia apenas a aplicação compilada.
+#
+# NÃO executamos `prisma migrate deploy` no start: o banco remoto (Neon) já
+# está estruturado e populado, e o runner de migrations falha com P3005
+# ("The database schema is not empty") ao não encontrar a tabela
+# _prisma_migrations. Migrations passam a ser aplicadas de forma controlada e
+# separada do boot (baseline/resolve ou pipeline dedicada).
+#
+# Exec form direto do Node (sem npm como PID 1) para propagar SIGINT/SIGTERM
+# corretamente ao handler de shutdown em src/main.ts.
+CMD ["node", "dist/main.js"]
