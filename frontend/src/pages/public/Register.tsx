@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Waves } from 'lucide-react';
+import { UtensilsCrossed } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
@@ -155,7 +155,7 @@ export function RegisterPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary-700 text-white">
-            <Waves className="size-7" aria-hidden="true" />
+            <UtensilsCrossed className="size-7" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold text-stone-900">Crie o seu restaurante</h1>
           <p className="mt-1 text-sm text-stone-500">
@@ -210,7 +210,7 @@ export function RegisterPage() {
               id="register-email"
               label="E-mail"
               type="email"
-              placeholder="voce@restaurante.com"
+              placeholder="seu@email.com"
               error={errors.email?.message}
               disabled={isSubmitting}
               autoComplete="email"

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { Waves } from 'lucide-react';
+import { UtensilsCrossed } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -115,11 +115,11 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary-700 text-white">
-            <Waves className="size-7" aria-hidden="true" />
+            <UtensilsCrossed className="size-7" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold text-stone-900">Acesso à plataforma</h1>
           <p className="mt-1 text-sm text-stone-500">
-            Painel de administração e operação do balneário.
+            Painel de administração e operação do estabelecimento.
           </p>
         </div>
 
@@ -134,7 +134,7 @@ export function LoginPage() {
               label="E-mail"
               type="email"
               autoComplete="email"
-              placeholder="voce@balneario.dev"
+              placeholder="seu@email.com"
               error={errors.email?.message}
               disabled={loginMutation.isPending}
               {...register('email')}
@@ -165,7 +165,7 @@ export function LoginPage() {
         </form>
 
         <p className="mt-6 text-center text-sm text-stone-500">
-          Deseja usar o sistema no seu restaurante?{' '}
+          Deseja usar o sistema no seu estabelecimento?{' '}
           <Link
             to="/register"
             className="font-semibold text-primary-700 hover:text-primary-600 hover:underline"
