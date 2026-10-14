@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Response } from 'express';
+import type { AuthRequest } from '../common/types/auth-request.js';
 
 import { AppError } from '../common/errors/AppError.js';
 import {
@@ -29,7 +30,7 @@ import {
  * Lista a base de clientes cadastrados.
  */
 export async function listEstablishmentsController(
-  _req: Request,
+  _req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -52,7 +53,7 @@ export async function listEstablishmentsController(
  *   VALIDATION_ERROR com a mensagem do schema.
  */
 export async function updateClientPasswordController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -99,7 +100,7 @@ export async function updateClientPasswordController(
  * - já autorizado → 409 EMAIL_ALREADY_AUTHORIZED.
  */
 export async function authorizeClientEmailController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -133,7 +134,7 @@ export async function authorizeClientEmailController(
  * - estabelecimento inexistente → 404 ESTABLISHMENT_NOT_FOUND.
  */
 export async function updateClientStatusController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
@@ -178,7 +179,7 @@ export async function updateClientStatusController(
  *   CANNOT_DELETE_OWN_ESTABLISHMENT (anti-lockout da plataforma).
  */
 export async function deleteEstablishmentController(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
