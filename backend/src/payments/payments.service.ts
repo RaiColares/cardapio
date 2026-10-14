@@ -4,6 +4,7 @@ import type { PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
+import { emitToRoom, sessionRoom } from '../realtime/socket.js';
 import { getSessionFinancials } from '../table-sessions/table-sessions.service.js';
 import type {
   CreatePaymentInput,
@@ -49,6 +50,51 @@ function serializePayment(payment: PaymentWithSelect) {
     ...payment,
     amount: Number(payment.amount),
   };
+}
+
+// ---------------------------------------------------------------
+// Realtime — confirmação de pagamento para o cliente
+// ---------------------------------------------------------------
+
+/**
+ * Emite `PAYMENT_CONFIRMED` para a sala da comanda do cliente
+ * (`room_session_{tableSessionId}`) quando um pagamento é confirmado
+ * (status `PAID`).
+ *
+ * SEGURANÇA/ESCOPO: o evento é direcionado EXCLUSIVAMENTE à sessão
+ * daquela comanda — outras mesas/clientes não recebem. O saldo
+ * (`paidAmount`/`remaining`/`settled`) é recalculado no servidor, então o
+ * payload é sempre a autoridade (nunca confia em valores do cliente).
+ *
+ * O emit é best-effort: se o realtime não estiver inicializado
+ * (`emitToRoom` vira no-op) ou o cliente estiver offline, a resposta HTTP
+ * do pagamento permanece válida (o cliente reconcilia ao recarregar).
+ */
+async function emitPaymentConfirmed(
+  tableSessionId: string,
+  establishmentId: string,
+  payment: ReturnType<typeof serializePayment>,
+) {
+  const { total, paidAmount, remaining, settled } = await getSessionFinancials(
+    tableSessionId,
+    establishmentId,
+  );
+
+  emitToRoom(sessionRoom(tableSessionId), 'PAYMENT_CONFIRMED', {
+    sessionId: tableSessionId,
+    payment: {
+      id: payment.id,
+      amount: payment.amount,
+      method: payment.method,
+      status: payment.status,
+      paidAt: payment.paidAt,
+    },
+    total,
+    paidAmount,
+    remaining,
+    settled,
+    confirmedAt: new Date().toISOString(),
+  });
 }
 
 // ---------------------------------------------------------------
@@ -261,7 +307,15 @@ export async function createPayment(
     select: paymentSelect,
   });
 
-  return serializePayment(payment);
+  const serialized = serializePayment(payment);
+
+  // Pagamento já lançado como PAID (fluxo comum do painel): confirma
+  // imediatamente na comanda do cliente.
+  if (serialized.status === 'PAID') {
+    await emitPaymentConfirmed(sessionId, establishmentId, serialized);
+  }
+
+  return serialized;
 }
 
 // ---------------------------------------------------------------
@@ -303,7 +357,15 @@ export async function transitionPaymentStatus(
     select: paymentSelect,
   });
 
-  return serializePayment(updated);
+  const serialized = serializePayment(updated);
+
+  // Confirmação de pagamento (PENDING → PAID): notifica a comanda do
+  // cliente em tempo real.
+  if (target === 'PAID') {
+    await emitPaymentConfirmed(updated.tableSessionId, establishmentId, serialized);
+  }
+
+  return serialized;
 }
 
 // ---------------------------------------------------------------
@@ -360,8 +422,15 @@ export async function updatePayment(
     select: paymentSelect,
   });
 
+  const serialized = serializePayment(updated);
+
+  // Transição para PAID via PATCH /payments/:id também confirma a comanda.
+  if (input.status === 'PAID') {
+    await emitPaymentConfirmed(payment.tableSessionId, establishmentId, serialized);
+  }
+
   return {
-    ...serializePayment(updated),
+    ...serialized,
     tableSessionId: payment.tableSessionId,
   };
 }

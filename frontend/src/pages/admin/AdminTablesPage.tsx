@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Printer, QrCode, Pencil, Plus, Trash2, UtensilsCrossed } from 'lucide-react';
+import { BellRing, Printer, QrCode, Pencil, Plus, Trash2, UtensilsCrossed } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { QRCodeSVG } from 'qrcode.react';
@@ -28,8 +28,12 @@ import {
   updateTable,
 } from '../../services/physical.js';
 import type { TablePayload } from '../../services/physical.js';
+import { useSocketEvents } from '../../services/socket.js';
 import { listTeamUsers } from '../../services/team.js';
+import { useAuthStore } from '../../stores/authStore.js';
+import { useBillIntentStore } from '../../stores/billIntentStore.js';
 import type { ApiArea, ApiTable } from '../../types/domain.js';
+import { cn } from '../../utils/cn.js';
 
 /**
  * Validação espelha o createTableSchema do backend:
@@ -81,6 +85,15 @@ function emptyForm(): TableFormValues {
 export function AdminTablesPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+
+  // Realtime (FASE 22/23): o painel escuta `BILL_REQUESTED` para destacar
+  // imediatamente a mesa que pediu a conta. Além de invalidar ['tables'] (o
+  // status persistido vira BILL_REQUESTED), o evento popula o billIntentStore
+  // chaveado pelo sessionId, o que dá o destaque instantâneo sem esperar o
+  // refetch da lista.
+  const establishmentId = useAuthStore((state) => state.user?.establishmentId);
+  useSocketEvents(establishmentId);
+  const billIntents = useBillIntentStore((state) => state.intents);
 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [editing, setEditing] = useState<ApiTable | null>(null);
@@ -249,66 +262,96 @@ export function AdminTablesPage() {
 
       {tablesQuery.isSuccess && tablesQuery.data.length > 0 && (
         <div className="flex flex-col gap-3">
-          {tablesQuery.data.map((table) => (
-            <Card key={table.id} className="flex items-center gap-4">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sand-100 text-stone-500">
-                <UtensilsCrossed className="size-5" aria-hidden="true" />
-              </div>
+          {tablesQuery.data.map((table) => {
+            // Destaque imediato: status persistido OU intenção recebida em
+            // tempo real (evento BILL_REQUESTED chaveado pelo sessionId).
+            const billRequested =
+              table.status === 'BILL_REQUESTED' ||
+              (table.activeSessionId ? Boolean(billIntents[table.activeSessionId]) : false);
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-semibold text-stone-900">
-                    Mesa {table.number}
-                    {table.name && <span className="font-normal text-stone-500"> · {table.name}</span>}
-                  </h2>
-                  {!table.active && <Badge variant="neutral">Inativa</Badge>}
-                  <TableStatusBadge status={table.status} />
+            return (
+              <Card
+                key={table.id}
+                className={cn(
+                  'flex items-center gap-4',
+                  billRequested && 'border-red-300 bg-red-50 ring-2 ring-red-100',
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                    billRequested
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-sand-100 text-stone-500',
+                  )}
+                >
+                  <UtensilsCrossed className="size-5" aria-hidden="true" />
                 </div>
-                <p className="mt-0.5 text-sm text-stone-500">
-                  {table.area.name} · {table.capacity}{' '}
-                  {table.capacity === 1 ? 'pessoa' : 'pessoas'}
-                </p>
-                <p className="mt-0.5 text-xs text-stone-400">
-                  {(table.waiters ?? []).length > 0
-                    ? `Garçons: ${(table.waiters ?? []).map((waiter) => waiter.name).join(', ')}`
-                    : 'Sem garçom vinculado'}
-                </p>
-              </div>
 
-              <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Ver QR Code da mesa ${table.number}`}
-                  onClick={() => setQrTarget(table)}
-                >
-                  <QrCode className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Editar mesa ${table.number}`}
-                  disabled={deleting}
-                  onClick={() => {
-                    setEditing(table);
-                    setModalMode('edit');
-                  }}
-                >
-                  <Pencil className="size-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Excluir mesa ${table.number}`}
-                  disabled={deleting}
-                  onClick={() => setDeleteTarget(table)}
-                  className="text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold text-stone-900">
+                      Mesa {table.number}
+                      {table.name && (
+                        <span className="font-normal text-stone-500"> · {table.name}</span>
+                      )}
+                    </h2>
+                    {!table.active && <Badge variant="neutral">Inativa</Badge>}
+                    {billRequested ? (
+                      <Badge variant="danger">
+                        <BellRing className="size-3.5" aria-hidden="true" />
+                        Pediu Conta
+                      </Badge>
+                    ) : (
+                      <TableStatusBadge status={table.status} />
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-sm text-stone-500">
+                    {table.area.name} · {table.capacity}{' '}
+                    {table.capacity === 1 ? 'pessoa' : 'pessoas'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-stone-400">
+                    {(table.waiters ?? []).length > 0
+                      ? `Garçons: ${(table.waiters ?? []).map((waiter) => waiter.name).join(', ')}`
+                      : 'Sem garçom vinculado'}
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Ver QR Code da mesa ${table.number}`}
+                    onClick={() => setQrTarget(table)}
+                  >
+                    <QrCode className="size-4" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Editar mesa ${table.number}`}
+                    disabled={deleting}
+                    onClick={() => {
+                      setEditing(table);
+                      setModalMode('edit');
+                    }}
+                  >
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Excluir mesa ${table.number}`}
+                    disabled={deleting}
+                    onClick={() => setDeleteTarget(table)}
+                    className="text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 

@@ -571,6 +571,34 @@ PAID    → REFUNDED
 - O endpoint PATCH `/payments/:id` também respeita a máquina (não é possível
   burlar as regras por ele).
 
+### Confirmação de pagamento em tempo real (`PAYMENT_CONFIRMED`)
+
+Quando um pagamento passa a `PAID`, o backend emite `PAYMENT_CONFIRMED`
+**exclusivamente para a comanda do cliente** (`room_session_{tableSessionId}`):
+
+- `POST /table-sessions/:id/payments` com `status: "PAID"`;
+- `PATCH /payments/:id/status` com `status: "PAID"`;
+- `PATCH /payments/:id` com `status: "PAID"`.
+
+Payload:
+
+```json
+{
+  "sessionId": "<uuid>",
+  "payment": { "id", "amount", "method", "status": "PAID", "paidAt" },
+  "total": 120.5,
+  "paidAmount": 120.5,
+  "remaining": 0,
+  "settled": true,
+  "confirmedAt": "<iso>"
+}
+```
+
+O saldo (`paidAmount`/`remaining`/`settled`) é recalculado no servidor — o
+cliente reconciliando a conta nunca confia em valores próprios. O emit é
+best-effort: sem realtime inicializado vira no-op e a resposta HTTP segue
+válida (o cliente reconcilia ao recarregar).
+
 ### Mock de Gateway PIX
 
 Criar pagamento `method: PIX` injeta (FASE 11 — integração fictícia):
@@ -724,7 +752,12 @@ Body:
 
 Resposta: `{ success, sessionId, tableId, tableNumber, tableStatus,
 paymentMethodIntent, changeRequested, requestedAt }`.
-Emite `BILL_REQUESTED` em `room_est_` + `room_session_`.
+
+Realtime: emite `BILL_REQUESTED` para a audiência da mesa (garçons
+atribuídos + equipe, ou sala do estabelecimento quando não há vínculo),
+**sempre para a sala do estabelecimento `room_est_`** (garante o painel de
+administração, cujo socket é anónimo) e para a comanda do cliente
+`room_session_`.
 
 ### GET `/public/table-sessions/:sessionToken/receipt`
 
@@ -1135,9 +1168,13 @@ ID;Nome;E-mail;Função;…
 - Eventos:
   - `NEW_ORDER` → audiência da mesa (pedido criado).
   - `ORDER_STATUS_UPDATED` → audiência da mesa + `room_table_` + `room_session_`.
-  - `BILL_REQUESTED` → audiência da mesa + `room_session_` (cliente pediu a
-    conta; payload inclui `paymentMethodIntent` e `changeRequested` desde a FASE 22).
+  - `BILL_REQUESTED` → audiência da mesa (garçons/equipe **ou** sala do
+    estabelecimento) + `room_est_` (painel de administração) + `room_session_`
+    (cliente pediu a conta; payload inclui `paymentMethodIntent` e
+    `changeRequested` desde a FASE 22).
   - `SESSION_CLOSED` → audiência da mesa + `room_table_` + `room_session_`.
+  - `PAYMENT_CONFIRMED` → **apenas** `room_session_` (pagamento confirmado
+    na comanda daquele cliente; `room_session_{tableSessionId}`).
 
 > **Limitação conhecida**: o cliente web atual ainda liga o socket sem JWT
 > (`frontend/src/services/socket.ts`). Enquanto isso, eventos de mesas

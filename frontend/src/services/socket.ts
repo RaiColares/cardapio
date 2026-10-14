@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { io, type Socket } from 'socket.io-client';
 
 import { useBillIntentStore, type BillRequestIntent } from '../stores/billIntentStore.js';
+import type { PaymentMethod, PaymentStatus } from '../types/domain.js';
 
 /** URL do servidor realtime (socket.io anexado ao HTTP principal). */
 export const SOCKET_URL: string = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:4000';
@@ -91,4 +92,86 @@ export function useSocketEvents(establishmentId: string | null | undefined): boo
   }, [establishmentId, queryClient]);
 
   return connected;
+}
+
+/* ------------------------------------------------------------------
+   Realtime do CLIENTE (página pública /table/:qrCode)
+   ------------------------------------------------------------------ */
+
+/**
+ * Payload do evento `PAYMENT_CONFIRMED` emitido pelo backend
+ * (backend/src/payments/payments.service.ts) quando um pagamento passa a
+ * `PAID`. O saldo é SEMPRE recalculado no servidor — o cliente apenas
+ * apresenta.
+ */
+export interface PaymentConfirmedPayload {
+  sessionId: string;
+  payment: {
+    id: string;
+    amount: number;
+    method: PaymentMethod;
+    status: PaymentStatus;
+    paidAt: string | null;
+  };
+  total: number;
+  paidAmount: number;
+  remaining: number;
+  settled: boolean;
+  confirmedAt: string;
+}
+
+/**
+ * Conecta o cliente à sala da sua comanda (`room_session_{sessionId}`) e
+ * sinaliza quando a conta é quitada.
+ *
+ * - Conecta o socket (singleton) sob demanda e emite `join_session`.
+ * - Escuta `PAYMENT_CONFIRMED` e só aceita eventos da MESMA comanda.
+ * - O emit de `join_session` é reenviado no `connect` (reconexões).
+ *
+ * Retorna `paid` (true após a confirmação) e o último pagamento recebido.
+ * O estado é local (não persiste): uma nova comanda recomeça "não paga".
+ */
+export function useCustomerSessionSocket(sessionId: string | null | undefined): {
+  paid: boolean;
+  payment: PaymentConfirmedPayload | null;
+} {
+  const [payment, setPayment] = useState<PaymentConfirmedPayload | null>(null);
+  const joinedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    function joinSession() {
+      socket.emit('join_session', sessionId);
+      joinedRef.current = sessionId ?? null;
+    }
+
+    function handlePaymentConfirmed(payload: PaymentConfirmedPayload) {
+      // Defensivo: ignora eventos de outras comandas.
+      if (payload?.sessionId && payload.sessionId !== sessionId) {
+        return;
+      }
+      setPayment(payload);
+    }
+
+    socket.on('connect', joinSession);
+    socket.on('PAYMENT_CONFIRMED', handlePaymentConfirmed);
+
+    if (socket.connected) {
+      if (joinedRef.current !== sessionId) {
+        joinSession();
+      }
+    } else {
+      socket.connect();
+    }
+
+    return () => {
+      socket.off('connect', joinSession);
+      socket.off('PAYMENT_CONFIRMED', handlePaymentConfirmed);
+    };
+  }, [sessionId]);
+
+  return { paid: payment !== null, payment };
 }

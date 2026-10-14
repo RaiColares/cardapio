@@ -3,6 +3,7 @@ import type { Order, OrderStatus, Prisma, TableSession } from '@prisma/client';
 import { AppError } from '../common/errors/AppError.js';
 import { prisma } from '../common/prisma/prisma.js';
 import {
+  emitToEstablishment,
   emitToRoom,
   emitToTableAudience,
   sessionRoom,
@@ -348,12 +349,23 @@ export async function requestBill(sessionToken: string, input: RequestBillInput 
 
   // Painéis (FASE 23): mesa atribuída → só os garçons dela + equipe
   // privilegiada; mesa sem vínculo → sala geral do estabelecimento.
+  const assignedWaiterIds = session.table.waiters.map((waiter) => waiter.id);
   emitToTableAudience(
     session.establishment.id,
-    session.table.waiters.map((waiter) => waiter.id),
+    assignedWaiterIds,
     'BILL_REQUESTED',
     payload,
   );
+
+  // Painel de administração: o socket dos painéis liga-se de forma anónima
+  // (sem JWT) e ingressa apenas na sala `room_est_`. Quando a mesa tem
+  // garçons atribuídos, o `emitToTableAudience` acima não cobre a sala
+  // geral — emitimos também para `room_est_` para garantir que o painel de
+  // administração receba a solicitação de conta. (Mesa sem vínculo já cai
+  // na sala geral no emit acima, evitando duplicidade.)
+  if (assignedWaiterIds.length > 0) {
+    emitToEstablishment(session.establishment.id, 'BILL_REQUESTED', payload);
+  }
 
   // Mesa/comanda específica (cliente) — confirmação.
   emitToRoom(sessionRoom(session.id), 'BILL_REQUESTED', payload);

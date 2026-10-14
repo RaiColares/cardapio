@@ -10,9 +10,11 @@ import {
   getSessionOrders,
   requestTableBill,
 } from '../../services/publicMenu.js';
+import { useCustomerSessionSocket } from '../../services/socket.js';
 import { useCustomerStore, cartSubtotal } from '../../stores/customerStore.js';
 import type { MenuEstablishment, OrderStatus, SessionOrdersExtract } from '../../types/domain.js';
 import { formatBRL } from '../../utils/format.js';
+import { Alert } from '../ui/Alert.js';
 import { Button } from '../ui/Button.js';
 import { Drawer } from '../ui/Drawer.js';
 import { EmptyState } from '../ui/EmptyState.js';
@@ -76,6 +78,12 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
     refetchInterval: 10_000,
     retry: 1,
   });
+
+  // Realtime da comanda: conecta o socket na página pública (/table/:qrCode),
+  // ingressa na sala da comanda (join_session) e detecta a confirmação do
+  // pagamento (PAYMENT_CONFIRMED). O sessionId vem do extrato público.
+  const sessionId = sessionOrdersQuery.data?.sessionId ?? null;
+  const { paid } = useCustomerSessionSocket(sessionId);
 
   // Fallback local (rastreio pedido a pedido) apenas enquanto o extrato não responde.
   const orderResults = useQueries({
@@ -154,6 +162,10 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
       showToast('error', 'Sessão da mesa expirou. Leia o QR Code novamente.');
       return;
     }
+    if (paid) {
+      showToast('error', CLOSED_SESSION_MESSAGE);
+      return;
+    }
     if (cart.length > MAX_ITEMS_PER_ORDER) {
       showToast('error', `Limite de ${MAX_ITEMS_PER_ORDER} itens por pedido.`);
       return;
@@ -166,9 +178,22 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
 
   return (
     <>
+      {/* Conta paga (evento PAYMENT_CONFIRMED): mantém o cardápio visível e
+          avisa que a comanda está encerrada — novos pedidos exigem recarregar. */}
+      {paid && (
+        <div className="fixed inset-x-0 top-0 z-[55] px-3 pt-3">
+          <div className="mx-auto max-w-md">
+            <Alert variant="success" title="Conta paga">
+              {CLOSED_SESSION_MESSAGE}
+            </Alert>
+          </div>
+        </div>
+      )}
+
       {/* Barra de ação flutuante — SEMPRE visível enquanto a sessão da mesa
           estiver aberta (FASE 22): atalho de acompanhamento de pedidos +
-          acesso ao carrinho, mesmo sem itens no carrinho. */}
+          acesso ao carrinho, mesmo sem itens no carrinho. Com a conta paga,
+          o carrinho é ocultado (novos pedidos exigem recarregar a página). */}
       {context && !open && (
         <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-full max-w-md items-end justify-end gap-2 px-4">
           <button
@@ -192,32 +217,34 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setTab('cart');
-              setOpen(true);
-            }}
-            aria-label={
-              itemCount > 0
-                ? `Abrir carrinho com ${itemCount} itens`
-                : 'Abrir carrinho (vazio)'
-            }
-            className="relative flex h-12 items-center gap-2 rounded-full bg-primary-700 px-4 font-semibold text-white shadow-pop transition-colors hover:bg-primary-800"
-          >
-            <ShoppingCart className="size-4.5" aria-hidden="true" />
-            <span className="text-sm">
-              {itemCount > 0 ? `Ver carrinho · ${formatBRL(subtotal)}` : 'Carrinho'}
-            </span>
-            {itemCount > 0 && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-sand-500 text-[11px] font-bold text-stone-900"
-              >
-                {Math.min(itemCount, 99)}
+          {!paid && (
+            <button
+              type="button"
+              onClick={() => {
+                setTab('cart');
+                setOpen(true);
+              }}
+              aria-label={
+                itemCount > 0
+                  ? `Abrir carrinho com ${itemCount} itens`
+                  : 'Abrir carrinho (vazio)'
+              }
+              className="relative flex h-12 items-center gap-2 rounded-full bg-primary-700 px-4 font-semibold text-white shadow-pop transition-colors hover:bg-primary-800"
+            >
+              <ShoppingCart className="size-4.5" aria-hidden="true" />
+              <span className="text-sm">
+                {itemCount > 0 ? `Ver carrinho · ${formatBRL(subtotal)}` : 'Carrinho'}
               </span>
-            )}
-          </button>
+              {itemCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-sand-500 text-[11px] font-bold text-stone-900"
+                >
+                  {Math.min(itemCount, 99)}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -247,15 +274,19 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
                 variant="primary"
                 size="lg"
                 className="w-full"
-                disabled={cart.length === 0 || checkout.isPending}
+                disabled={cart.length === 0 || checkout.isPending || paid}
                 loading={checkout.isPending}
                 onClick={handleCheckout}
               >
                 {checkout.isPending ? 'Enviando pedido...' : 'Enviar pedido'}
               </Button>
-              <p className="text-center text-xs text-stone-400">
-                Valores finais confirmados no recebimento do pedido.
-              </p>
+              {paid ? (
+                <p className="text-center text-xs text-amber-600">{CLOSED_SESSION_MESSAGE}</p>
+              ) : (
+                <p className="text-center text-xs text-stone-400">
+                  Valores finais confirmados no recebimento do pedido.
+                </p>
+              )}
             </div>
           ) : null
         }
@@ -348,6 +379,7 @@ export function CustomerPanel({ menuEstablishment }: CustomerPanelProps) {
             localLive={orderResults.map((result) => result.data)}
             billRequested={billRequested}
             billPending={bill.isPending}
+            paid={paid}
             onRequestBill={() => setRequestBillOpen(true)}
           />
         )}
@@ -377,6 +409,7 @@ function OrdersTab({
   localLive,
   billRequested,
   billPending,
+  paid,
   onRequestBill,
 }: {
   extract: SessionOrdersExtract | null;
@@ -385,12 +418,20 @@ function OrdersTab({
   localLive: ({ status?: OrderStatus; total?: number } | undefined)[];
   billRequested: boolean;
   billPending: boolean;
+  paid: boolean;
   onRequestBill: () => void;
 }) {
   const useExtract = Boolean(extract && extract.orders.length > 0);
   const hasOrders = useExtract ? true : localOrders.length > 0;
 
   if (!hasOrders) {
+    if (paid) {
+      return (
+        <Alert variant="success" title="Conta paga">
+          {CLOSED_SESSION_MESSAGE}
+        </Alert>
+      );
+    }
     return (
       <div className="space-y-4">
         <EmptyState
@@ -407,6 +448,11 @@ function OrdersTab({
 
   return (
     <div className="space-y-4">
+      {paid && (
+        <Alert variant="success" title="Conta paga">
+          {CLOSED_SESSION_MESSAGE}
+        </Alert>
+      )}
       {useExtract
         ? extract!.orders.map((order) => (
             <div
@@ -502,19 +548,27 @@ function OrdersTab({
       )}
 
       <div className="pt-1">
-        <Button
-          variant="secondary"
-          size="lg"
-          className="w-full"
-          disabled={billRequested || billPending}
-          loading={billPending}
-          onClick={onRequestBill}
-        >
-          {billRequested ? 'Conta já solicitada' : 'Pedir a conta'}
-        </Button>
-        <p className="mt-2 text-center text-xs text-stone-400">
-          Ao pedir a conta, o garçom é avisado para fazer o fechamento da mesa.
-        </p>
+        {paid ? (
+          <p className="rounded-xl bg-green-50 px-3 py-3 text-center text-sm font-semibold text-green-800">
+            Conta paga — obrigado! A comanda está encerrada.
+          </p>
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              disabled={billRequested || billPending}
+              loading={billPending}
+              onClick={onRequestBill}
+            >
+              {billRequested ? 'Conta já solicitada' : 'Pedir a conta'}
+            </Button>
+            <p className="mt-2 text-center text-xs text-stone-400">
+              Ao pedir a conta, o garçom é avisado para fazer o fechamento da mesa.
+            </p>
+          </>
+        )}
         {extractFailed && localOrders.length > 0 && (
           <p className="mt-2 text-center text-xs text-amber-600">
             Resumo indisponível no momento — exibindo dados locais.

@@ -16,7 +16,7 @@ import { verifyAccessToken } from '../common/auth/jwt.js';
  *   - `room_user_{userId}`          → garçom autenticado (FASE 23)
  *   - `room_staff_{establishmentId}`→ ADMIN/MANAGER/KITCHEN (FASE 23)
  * - Eventos emitidos: NEW_ORDER, ORDER_STATUS_UPDATED, BILL_REQUESTED,
- *   SESSION_CLOSED, etc.
+ *   SESSION_CLOSED, PAYMENT_CONFIRMED, etc.
  *
  * FASE 23 — Auth opcional no handshake:
  *   `io(SOCKET_URL, { auth: { token } })` faz o socket ser identificado
